@@ -20,6 +20,19 @@ export class LoginDto {
 }
 
 /**
+ * 修改当前后台账号密码。
+ */
+export class ChangePasswordDto {
+  @IsString()
+  @IsNotEmpty()
+  oldPassword: string;
+
+  @IsString()
+  @IsNotEmpty()
+  newPassword: string;
+}
+
+/**
  * 后台认证接口。小程序没有对应的登录接口。
  */
 @Controller('admin/auth')
@@ -52,6 +65,14 @@ export class AuthController {
   @Get('profile')
   profile(@CurrentAccount() loginAccountContext: LoginAccountContext) {
     return this.authService.getProfile(loginAccountContext);
+  }
+
+  /**
+   * 按旧密码修改当前登录人的密码。
+   */
+  @Post('password')
+  changePassword(@CurrentAccount() loginAccountContext: LoginAccountContext, @Body() changePasswordDto: ChangePasswordDto) {
+    return this.authService.changePassword(loginAccountContext, changePasswordDto.oldPassword, changePasswordDto.newPassword);
   }
 
   /**

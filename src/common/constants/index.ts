@@ -7,6 +7,13 @@ export const AccountType = {
 } as const;
 
 /**
+ * 后台密码哈希。轮数与现有种子哈希一致。
+ */
+export const PasswordHash = {
+  SALT_ROUNDS: 10,
+} as const;
+
+/**
  * 后台角色编码。
  */
 export const RoleCode = {

@@ -64,12 +64,12 @@ INSERT INTO sys_role_permission (id, role_id, permission_id) VALUES
 (46, 6, 14),(47, 6, 16),(48, 6, 17),(49, 6, 18),(50, 6, 19),(51, 6, 20);
 
 INSERT INTO sys_menu (id, parent_id, menu_name, menu_path, component_path, permission_code, module_code, sort_order) VALUES
-(1, 0, '会员中心', '/member', '', '', 'CORE', 10),
+(1, 0, 'A380中心', '/member', '', '', 'CORE', 10),
 (2, 0, '财务管理', '/finance', '', '', 'CORE', 20),
 (3, 0, 'KTV业务', '/ktv', '', '', 'KTV', 30),
 (4, 0, '酒店业务', '/hotel', '', '', 'HOTEL', 40),
-(11, 1, '会员查询', '/member/query', 'member/query', 'member:query', 'CORE', 11),
-(12, 1, '会员充值', '/member/recharge', 'member/recharge', 'member:recharge', 'CORE', 12),
+(11, 1, 'A380查询', '/member/query', 'member/query', 'member:query', 'CORE', 11),
+(12, 1, 'A380充值', '/member/recharge', 'member/recharge', 'member:recharge', 'CORE', 12),
 (21, 2, '财务流水', '/finance/bill', 'finance/bill', 'finance:bill:query', 'CORE', 21),
 (31, 3, '门店管理', '/ktv/shop', 'ktv/shop', 'ktv:shop:query', 'KTV', 31),
 (32, 3, '包厢管理', '/ktv/room', 'ktv/room', 'ktv:room:query', 'KTV', 32),

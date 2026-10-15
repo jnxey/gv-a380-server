@@ -2,7 +2,7 @@ import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import Redis from 'ioredis';
-import { AccountType, RecordStatus, RedisKey, RedisValue, TimeSpan } from '../../common/constants';
+import { AccountType, PasswordHash, RecordStatus, RedisKey, RedisValue, TimeSpan } from '../../common/constants';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { LoginAccountContext } from '../../common/interfaces/login-account-context';
 import { REDIS_CLIENT } from '../../common/redis/redis.module';
@@ -111,5 +111,28 @@ export class AuthService {
       permissionCodeList: loginAccountContext.permissionCodeList,
       shopList,
     };
+  }
+
+  /**
+   * 按旧密码修改当前后台账号的密码。
+   */
+  async changePassword(loginAccountContext: LoginAccountContext, oldPassword: string, newPassword: string): Promise<void> {
+    // 1. 按当前登录人读取账号，密码列默认不查询，这里单独取出
+    const sysUser = await this.sysUserRepository
+      .createQueryBuilder('sysUser')
+      .addSelect('sysUser.passwordHash')
+      .where('sysUser.id = :accountId', { accountId: loginAccountContext.accountId })
+      .getOne();
+    if (isEmpty(sysUser)) {
+      throw new UnauthorizedException('账号不存在');
+    }
+    // 2. 旧密码不对时不更新
+    const oldPasswordMatched = await bcrypt.compare(oldPassword, sysUser.passwordHash);
+    if (oldPasswordMatched !== true) {
+      throw new BusinessException('旧密码不正确');
+    }
+    // 3. 写入新密码哈希
+    const passwordHash = await bcrypt.hash(newPassword, PasswordHash.SALT_ROUNDS);
+    await this.sysUserRepository.update(sysUser.id, { passwordHash });
   }
 }
