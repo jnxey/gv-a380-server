@@ -1,0 +1,18 @@
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { MemberModule } from '../core/member/member.module';
+import { NotifyModule } from '../core/notify/notify.module';
+import { ShopModule } from '../core/shop/shop.module';
+import { HotelAdminController, HotelAppController } from './hotel.controller';
+import { HotelBookingOrder, HotelRoom, HotelRoomType, HotelStayRecord } from './hotel.entities';
+import { HotelService } from './hotel.service';
+
+/**
+ * 酒店业务模块。房费扣减只调用 core 的余额服务。
+ */
+@Module({
+  imports: [TypeOrmModule.forFeature([HotelRoomType, HotelRoom, HotelBookingOrder, HotelStayRecord]), MemberModule, NotifyModule, ShopModule],
+  controllers: [HotelAdminController, HotelAppController],
+  providers: [HotelService],
+})
+export class HotelModule {}
