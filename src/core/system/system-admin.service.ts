@@ -62,6 +62,7 @@ export interface SystemPermissionOption {
   permissionCode: string;
   permissionName: string;
   moduleCode: string;
+  menuId: string;
 }
 
 /**
@@ -247,6 +248,7 @@ export class SystemAdminService {
         permissionCode: sysPermission.permissionCode,
         permissionName: sysPermission.permissionName,
         moduleCode: sysPermission.moduleCode,
+        menuId: toIdentifier(sysPermission.menuId),
       })),
       menuList: menuList.map((sysMenu) => ({
         menuId: toIdentifier(sysMenu.id),

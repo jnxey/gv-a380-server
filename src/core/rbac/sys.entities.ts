@@ -89,6 +89,9 @@ export class SysPermission {
   @Column({ type: 'varchar', length: 16 })
   moduleCode: string;
 
+  @Column({ type: 'bigint', unsigned: true, default: 0 })
+  menuId: string;
+
   @CreateDateColumn({ type: 'datetime' })
   createdAt: string;
 }

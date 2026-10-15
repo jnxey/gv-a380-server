@@ -67,9 +67,11 @@ CREATE TABLE sys_permission (
   permission_code VARCHAR(64) NOT NULL COMMENT '权限编码',
   permission_name VARCHAR(64) NOT NULL COMMENT '权限名称',
   module_code VARCHAR(16) NOT NULL COMMENT '所属模块：CORE、KTV、HOTEL',
+  menu_id BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '所属页面菜单ID，0表示未挂页面',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (id),
-  UNIQUE KEY uk_sys_permission_code (permission_code)
+  UNIQUE KEY uk_sys_permission_code (permission_code),
+  KEY idx_sys_permission_menu_id (menu_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='接口功能权限';
 
 CREATE TABLE sys_role_permission (
