@@ -212,6 +212,32 @@ export const PermissionCode = {
   HOTEL_STAY_EXTEND: 'hotel:stay:extend',
   HOTEL_STAY_CHECK_OUT: 'hotel:stay:check-out',
   HOTEL_ORDER_CANCEL: 'hotel:order:cancel',
+  SYSTEM_USER_QUERY: 'system:user:query',
+  SYSTEM_USER_SAVE: 'system:user:save',
+  SYSTEM_ROLE_QUERY: 'system:role:query',
+  SYSTEM_ROLE_SAVE: 'system:role:save',
+} as const;
+
+/**
+ * 系统管理菜单路径。
+ */
+export const SystemMenuPath = {
+  ROOT: '/system',
+  USER: '/system/user',
+  ROLE: '/system/role',
+} as const;
+
+/**
+ * 集团超级管理员保存角色时必须保留的系统管理权限和菜单。
+ */
+export const SuperAdminKeep = {
+  PERMISSION_CODE_LIST: [
+    PermissionCode.SYSTEM_USER_QUERY,
+    PermissionCode.SYSTEM_USER_SAVE,
+    PermissionCode.SYSTEM_ROLE_QUERY,
+    PermissionCode.SYSTEM_ROLE_SAVE,
+  ],
+  MENU_PATH_LIST: [SystemMenuPath.ROOT, SystemMenuPath.USER, SystemMenuPath.ROLE],
 } as const;
 
 /**

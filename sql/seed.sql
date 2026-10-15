@@ -50,7 +50,11 @@ INSERT INTO sys_permission (id, permission_code, permission_name, module_code) V
 (17, 'hotel:stay:check-in', '酒店入住', 'HOTEL'),
 (18, 'hotel:stay:extend', '酒店续住', 'HOTEL'),
 (19, 'hotel:stay:check-out', '酒店退房', 'HOTEL'),
-(20, 'hotel:order:cancel', '酒店订单取消', 'HOTEL');
+(20, 'hotel:order:cancel', '酒店订单取消', 'HOTEL'),
+(21, 'system:user:query', '账号查询', 'CORE'),
+(22, 'system:user:save', '账号保存', 'CORE'),
+(23, 'system:role:query', '角色查询', 'CORE'),
+(24, 'system:role:save', '角色保存', 'CORE');
 
 INSERT INTO sys_role_permission (id, role_id, permission_id) VALUES
 (1, 1, 1),(2, 1, 2),(3, 1, 3),(4, 1, 4),(5, 1, 5),
@@ -61,7 +65,8 @@ INSERT INTO sys_role_permission (id, role_id, permission_id) VALUES
 (24, 3, 4),(25, 3, 5),(26, 3, 6),(27, 3, 7),(28, 3, 8),(29, 3, 9),(30, 3, 10),(31, 3, 11),
 (32, 4, 6),(33, 4, 8),(34, 4, 9),(35, 4, 10),(36, 4, 11),
 (37, 5, 12),(38, 5, 13),(39, 5, 14),(40, 5, 15),(41, 5, 16),(42, 5, 17),(43, 5, 18),(44, 5, 19),(45, 5, 20),
-(46, 6, 14),(47, 6, 16),(48, 6, 17),(49, 6, 18),(50, 6, 19),(51, 6, 20);
+(46, 6, 14),(47, 6, 16),(48, 6, 17),(49, 6, 18),(50, 6, 19),(51, 6, 20),
+(52, 1, 21),(53, 1, 22),(54, 1, 23),(55, 1, 24);
 
 INSERT INTO sys_menu (id, parent_id, menu_name, menu_path, component_path, permission_code, module_code, sort_order) VALUES
 (1, 0, 'A380中心', '/member', '', '', 'CORE', 10),
@@ -76,7 +81,10 @@ INSERT INTO sys_menu (id, parent_id, menu_name, menu_path, component_path, permi
 (33, 3, '订单核销', '/ktv/verify', 'ktv/verify', 'ktv:order:query', 'KTV', 33),
 (41, 4, '房型管理', '/hotel/room-type', 'hotel/room-type', 'hotel:room-type:query', 'HOTEL', 41),
 (42, 4, '房间管理', '/hotel/room', 'hotel/room', 'hotel:room:query', 'HOTEL', 42),
-(43, 4, '入住退房', '/hotel/stay', 'hotel/stay', 'hotel:order:query', 'HOTEL', 43);
+(43, 4, '入住退房', '/hotel/stay', 'hotel/stay', 'hotel:order:query', 'HOTEL', 43),
+(5, 0, '系统管理', '/system', '', '', 'CORE', 50),
+(51, 5, '账号管理', '/system/user', 'system/user', 'system:user:query', 'CORE', 51),
+(52, 5, '角色权限', '/system/role', 'system/role', 'system:role:query', 'CORE', 52);
 
 INSERT INTO sys_role_menu (id, role_id, menu_id) VALUES
 (1, 1, 1),(2, 1, 2),(3, 1, 3),(4, 1, 4),
@@ -86,7 +94,8 @@ INSERT INTO sys_role_menu (id, role_id, menu_id) VALUES
 (19, 3, 3),(20, 3, 31),(21, 3, 32),(22, 3, 33),
 (23, 4, 3),(24, 4, 33),
 (25, 5, 4),(26, 5, 41),(27, 5, 42),(28, 5, 43),
-(29, 6, 4),(30, 6, 43);
+(29, 6, 4),(30, 6, 43),
+(31, 1, 5),(32, 1, 51),(33, 1, 52);
 
 INSERT INTO sys_user_shop (id, user_id, shop_id) VALUES
 (1, 1, 1),(2, 1, 2),(3, 1, 3),
