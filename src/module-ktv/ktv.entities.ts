@@ -38,6 +38,27 @@ export class KtvRoom {
 }
 
 /**
+ * KTV 包厢图片。一个包厢最多 6 张，张数由服务校验。
+ */
+@Entity('ktv_room_image')
+export class KtvRoomImage {
+  @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
+  id: string;
+
+  @Column({ type: 'bigint', unsigned: true })
+  roomId: string;
+
+  @Column({ type: 'varchar', length: 255 })
+  imageUrl: string;
+
+  @Column({ type: 'int', unsigned: true, default: 0 })
+  sortOrder: number;
+
+  @CreateDateColumn({ type: 'datetime' })
+  createdAt: string;
+}
+
+/**
  * KTV 预订订单。创建时即扣包厢费。
  */
 @Entity('ktv_booking_order')

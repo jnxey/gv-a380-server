@@ -1,3 +1,6 @@
+import { randomUUID } from 'crypto';
+import { mkdir, unlink, writeFile } from 'fs/promises';
+import { join } from 'path';
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import Decimal from 'decimal.js';
@@ -9,7 +12,10 @@ import {
   HotelOrderStatus,
   HotelRoomStatus,
   HotelStayStatus,
+  PageSetting,
   RecordStatus,
+  ShopImageLimit,
+  ShopImageMime,
   ShopType,
   NumberBoundary,
 } from '../common/constants';
@@ -33,7 +39,7 @@ import { MemberBalanceService } from '../core/member/member-balance.service';
 import { MemberQueryService } from '../core/member/member-query.service';
 import { NotifyService } from '../core/notify/notify.service';
 import { ShopService } from '../core/shop/shop.service';
-import { HotelBookingOrder, HotelRoom, HotelRoomType, HotelStayRecord } from './hotel.entities';
+import { HotelBookingOrder, HotelRoom, HotelRoomImage, HotelRoomType, HotelStayRecord } from './hotel.entities';
 
 /**
  * 小程序创建酒店预订的入参。
@@ -88,6 +94,36 @@ export interface HotelBookingOrderView {
 }
 
 /**
+ * 前端使用的一张房间图片。
+ */
+export interface HotelRoomImageView {
+  imageId: string;
+  imageUrl: string;
+}
+
+/**
+ * 上传文件里服务需要的字段。
+ */
+export interface HotelRoomImageFile {
+  buffer: Buffer;
+  mimetype: string;
+  size: number;
+}
+
+/**
+ * 带图片列表的房间。
+ */
+export interface HotelRoomView {
+  id: string;
+  shopId: string;
+  roomTypeId: string;
+  roomNo: string;
+  floorNo: string;
+  roomStatus: string;
+  imageList: HotelRoomImageView[];
+}
+
+/**
  * 酒店房型、房间、预订、入住、续住和退房结算。
  */
 @Injectable()
@@ -99,6 +135,8 @@ export class HotelService {
     private readonly hotelRoomTypeRepository: Repository<HotelRoomType>,
     @InjectRepository(HotelRoom)
     private readonly hotelRoomRepository: Repository<HotelRoom>,
+    @InjectRepository(HotelRoomImage)
+    private readonly hotelRoomImageRepository: Repository<HotelRoomImage>,
     @InjectRepository(HotelBookingOrder)
     private readonly hotelBookingOrderRepository: Repository<HotelBookingOrder>,
     @InjectRepository(HotelStayRecord)
@@ -158,13 +196,12 @@ export class HotelService {
   }
 
   /**
-   * 后台分页查询当前门店房间。
+   * 查询当前门店房间，并带上图片。可按房态、房型筛选。
    */
-  async pageRooms(roomStatus: string, roomTypeId: string, pageValue: unknown, pageSizeValue: unknown): Promise<PageResult<HotelRoom>> {
+  async pageRooms(roomStatus: string, roomTypeId: string): Promise<PageResult<HotelRoomView>> {
     if (!isEmpty(roomStatus) && !isOneOf(roomStatus, Object.values(HotelRoomStatus))) {
       throw new BusinessException('房态不正确');
     }
-    const pageResult = resolvePage(pageValue, pageSizeValue);
     const whereCondition: FindOptionsWhere<HotelRoom> = {};
     if (!isEmpty(roomStatus)) {
       whereCondition.roomStatus = roomStatus;
@@ -172,19 +209,18 @@ export class HotelService {
     if (!isEmpty(roomTypeId)) {
       whereCondition.roomTypeId = roomTypeId;
     }
-    const [list, total] = await this.hotelRoomRepository.findAndCount({
+    const roomList = await this.hotelRoomRepository.find({
       where: whereCondition,
       order: { roomNo: 'ASC' },
-      skip: pageResult.skip,
-      take: pageResult.pageSize,
     });
-    return { list, total, page: pageResult.page, pageSize: pageResult.pageSize };
+    const list = await this.toRoomViewList(roomList);
+    return { list, total: list.length, page: PageSetting.DEFAULT_PAGE, pageSize: list.length };
   }
 
   /**
    * 新建当前门店房间。房型必须属于当前门店。
    */
-  async createRoom(command: SaveHotelRoomCommand): Promise<HotelRoom> {
+  async createRoom(command: SaveHotelRoomCommand): Promise<HotelRoomView> {
     this.assertRoomCommand(command);
     const currentShopId = this.requireCurrentShopId();
     await this.requireRoomType(command.roomTypeId);
@@ -192,7 +228,8 @@ export class HotelService {
     hotelRoom.shopId = currentShopId;
     this.fillRoom(hotelRoom, command);
     try {
-      return await this.hotelRoomRepository.save(hotelRoom);
+      const savedRoom = await this.hotelRoomRepository.save(hotelRoom);
+      return this.toRoomView(savedRoom, []);
     } catch (error) {
       if (isDuplicateEntryError(error)) {
         throw new BusinessException('房间号已存在');
@@ -204,7 +241,7 @@ export class HotelService {
   /**
    * 修改当前门店房间。
    */
-  async updateRoom(roomId: string, command: SaveHotelRoomCommand): Promise<HotelRoom> {
+  async updateRoom(roomId: string, command: SaveHotelRoomCommand): Promise<HotelRoomView> {
     this.assertRoomCommand(command);
     const hotelRoom = await this.hotelRoomRepository.findOne({ where: { id: roomId } });
     if (isEmpty(hotelRoom)) {
@@ -213,13 +250,67 @@ export class HotelService {
     await this.requireRoomType(command.roomTypeId);
     this.fillRoom(hotelRoom, command);
     try {
-      return await this.hotelRoomRepository.save(hotelRoom);
+      const savedRoom = await this.hotelRoomRepository.save(hotelRoom);
+      const viewList = await this.toRoomViewList([savedRoom]);
+      return viewList[0];
     } catch (error) {
       if (isDuplicateEntryError(error)) {
         throw new BusinessException('房间号已存在');
       }
       throw error;
     }
+  }
+
+  /**
+   * 给当前门店的房间追加一张图片。
+   */
+  async addRoomImage(roomId: string, file: HotelRoomImageFile): Promise<HotelRoomImageView> {
+    const hotelRoom = await this.requireRoom(roomId);
+    if (isEmpty(file) || isEmpty(file.buffer) || file.buffer.length === 0) {
+      throw new BusinessException('请选择图片');
+    }
+    const extension = this.resolveImageExtension(file.mimetype);
+    if (file.size > ShopImageLimit.MAX_BYTES) {
+      throw new BusinessException('图片不能超过5MB');
+    }
+    const roomIdValue = toIdentifier(hotelRoom.id);
+    const imageCount = await this.hotelRoomImageRepository.count({ where: { roomId: roomIdValue } });
+    if (imageCount >= ShopImageLimit.MAX_COUNT) {
+      throw new BusinessException('房间图片最多6张');
+    }
+    const fileName = `${randomUUID()}${extension}`;
+    const directoryPath = join(process.cwd(), 'uploads', 'hotel-room', roomIdValue);
+    await mkdir(directoryPath, { recursive: true });
+    await writeFile(join(directoryPath, fileName), file.buffer);
+    const roomImage = new HotelRoomImage();
+    roomImage.roomId = roomIdValue;
+    roomImage.imageUrl = `/uploads/hotel-room/${roomIdValue}/${fileName}`;
+    roomImage.sortOrder = imageCount;
+    const savedImage = await this.hotelRoomImageRepository.save(roomImage);
+    return this.toImageView(savedImage);
+  }
+
+  /**
+   * 删除当前门店房间的一张图片，并删掉磁盘文件。
+   */
+  async removeRoomImage(roomId: string, imageId: string): Promise<void> {
+    const hotelRoom = await this.requireRoom(roomId);
+    const roomIdValue = toIdentifier(hotelRoom.id);
+    const roomImage = await this.hotelRoomImageRepository.findOne({ where: { id: imageId, roomId: roomIdValue } });
+    if (isEmpty(roomImage)) {
+      throw new BusinessException('房间图片不存在');
+    }
+    const fileName = roomImage.imageUrl.slice(roomImage.imageUrl.lastIndexOf('/') + 1);
+    const filePath = join(process.cwd(), 'uploads', 'hotel-room', roomIdValue, fileName);
+    try {
+      await unlink(filePath);
+    } catch (error) {
+      const errorCode = (error as { code?: string }).code;
+      if (errorCode !== 'ENOENT') {
+        throw error;
+      }
+    }
+    await this.hotelRoomImageRepository.delete({ id: roomImage.id });
   }
 
   /**
@@ -530,6 +621,76 @@ export class HotelService {
       throw new BusinessException('请选择门店');
     }
     return currentShopId;
+  }
+
+  /**
+   * 确认房间属于当前门店。
+   */
+  private async requireRoom(roomId: string): Promise<HotelRoom> {
+    const hotelRoom = await this.hotelRoomRepository.findOne({ where: { id: roomId } });
+    if (isEmpty(hotelRoom)) {
+      throw new BusinessException('房间不存在');
+    }
+    return hotelRoom;
+  }
+
+  /**
+   * 按图片类型得到后缀。不支持的类型直接拒绝。
+   */
+  private resolveImageExtension(mimetype: string): string {
+    if (mimetype === ShopImageMime.JPEG) {
+      return '.jpg';
+    }
+    if (mimetype === ShopImageMime.PNG) {
+      return '.png';
+    }
+    if (mimetype === ShopImageMime.WEBP) {
+      return '.webp';
+    }
+    throw new BusinessException('只支持 jpg、png、webp');
+  }
+
+  /**
+   * 转成前端使用的图片字段。
+   */
+  private toImageView(roomImage: HotelRoomImage): HotelRoomImageView {
+    return {
+      imageId: toIdentifier(roomImage.id),
+      imageUrl: roomImage.imageUrl,
+    };
+  }
+
+  /**
+   * 转成带图片列表的房间字段。
+   */
+  private toRoomView(room: HotelRoom, imageList: HotelRoomImageView[]): HotelRoomView {
+    return {
+      id: toIdentifier(room.id),
+      shopId: toIdentifier(room.shopId),
+      roomTypeId: toIdentifier(room.roomTypeId),
+      roomNo: room.roomNo,
+      floorNo: room.floorNo,
+      roomStatus: room.roomStatus,
+      imageList,
+    };
+  }
+
+  /**
+   * 批量转成带图片列表的房间字段。
+   */
+  private async toRoomViewList(roomList: HotelRoom[]): Promise<HotelRoomView[]> {
+    const roomIdList = roomList.map((room) => toIdentifier(room.id));
+    const imageList = roomIdList.length === 0 ? [] : await this.hotelRoomImageRepository.find({
+      where: { roomId: In(roomIdList) },
+      order: { sortOrder: 'ASC', id: 'ASC' },
+    });
+    return roomList.map((room) => {
+      const roomId = toIdentifier(room.id);
+      const roomImageList = imageList
+        .filter((roomImage) => toIdentifier(roomImage.roomId) === roomId)
+        .map((roomImage) => this.toImageView(roomImage));
+      return this.toRoomView(room, roomImageList);
+    });
   }
 
   /**

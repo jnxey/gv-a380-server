@@ -1,7 +1,8 @@
-import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Min } from 'class-validator';
-import { KtvRoomType, ModuleCode, PermissionCode, RecordStatus } from '../common/constants';
+import { KtvRoomType, ModuleCode, PermissionCode, RecordStatus, ShopImageLimit } from '../common/constants';
 import { PageQueryDto } from '../common/dto/page-query.dto';
 import { CurrentAccount } from '../common/decorators/current-account.decorator';
 import { RequireModule, RequirePermission, RequiresShop } from '../common/decorators/auth.decorators';
@@ -88,12 +89,12 @@ export class KtvAdminController {
   constructor(private readonly ktvService: KtvService) {}
 
   /**
-   * 分页查询包厢。
+   * 查询当前门店全部包厢。
    */
   @Get('rooms')
   @RequirePermission(PermissionCode.KTV_ROOM_QUERY)
-  pageRooms(@Query() pageQueryDto: PageQueryDto) {
-    return this.ktvService.pageRooms(pageQueryDto.page, pageQueryDto.pageSize);
+  pageRooms() {
+    return this.ktvService.pageRooms();
   }
 
   /**
@@ -103,6 +104,26 @@ export class KtvAdminController {
   @RequirePermission(PermissionCode.KTV_ROOM_SAVE)
   createRoom(@Body() saveKtvRoomDto: SaveKtvRoomDto) {
     return this.ktvService.createRoom(saveKtvRoomDto);
+  }
+
+  /**
+   * 给当前门店的包厢上传一张图片。
+   */
+  @Post('rooms/:roomId/images')
+  @RequirePermission(PermissionCode.KTV_ROOM_SAVE)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: ShopImageLimit.MAX_BYTES } }))
+  addRoomImage(@Param('roomId') roomId: string, @UploadedFile() file: Express.Multer.File) {
+    return this.ktvService.addRoomImage(roomId, file);
+  }
+
+  /**
+   * 删除当前门店包厢的一张图片。
+   */
+  @Delete('rooms/:roomId/images/:imageId')
+  @RequirePermission(PermissionCode.KTV_ROOM_SAVE)
+  async removeRoomImage(@Param('roomId') roomId: string, @Param('imageId') imageId: string) {
+    await this.ktvService.removeRoomImage(roomId, imageId);
+    return null;
   }
 
   /**
