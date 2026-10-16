@@ -234,17 +234,6 @@ CREATE TABLE ktv_room (
   CONSTRAINT fk_ktv_room_shop FOREIGN KEY (shop_id) REFERENCES shop (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='KTV包厢';
 
-CREATE TABLE ktv_room_image (
-  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
-  room_id BIGINT UNSIGNED NOT NULL COMMENT '包厢ID',
-  image_url VARCHAR(255) NOT NULL COMMENT '图片访问路径',
-  sort_order INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '排序，从0开始',
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  PRIMARY KEY (id),
-  KEY idx_ktv_room_image_room_id (room_id, sort_order),
-  CONSTRAINT fk_ktv_room_image_room FOREIGN KEY (room_id) REFERENCES ktv_room (id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='KTV包厢图片';
-
 CREATE TABLE ktv_booking_order (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
   shop_id BIGINT UNSIGNED NOT NULL COMMENT '门店ID',
@@ -323,17 +312,6 @@ CREATE TABLE hotel_room (
   CONSTRAINT fk_hotel_room_shop FOREIGN KEY (shop_id) REFERENCES shop (id),
   CONSTRAINT fk_hotel_room_type FOREIGN KEY (room_type_id) REFERENCES hotel_room_type (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='酒店房间';
-
-CREATE TABLE hotel_room_image (
-  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
-  room_id BIGINT UNSIGNED NOT NULL COMMENT '房间ID',
-  image_url VARCHAR(255) NOT NULL COMMENT '图片访问路径',
-  sort_order INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '排序，从0开始',
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  PRIMARY KEY (id),
-  KEY idx_hotel_room_image_room_id (room_id, sort_order),
-  CONSTRAINT fk_hotel_room_image_room FOREIGN KEY (room_id) REFERENCES hotel_room (id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='酒店房间图片';
 
 CREATE TABLE hotel_booking_order (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',

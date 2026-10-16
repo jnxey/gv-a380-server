@@ -1,6 +1,3 @@
-import { randomUUID } from 'crypto';
-import { mkdir, unlink, writeFile } from 'fs/promises';
-import { join } from 'path';
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, FindOptionsWhere, In, Repository } from 'typeorm';
@@ -14,8 +11,6 @@ import {
   KtvRoomType,
   PageSetting,
   RecordStatus,
-  ShopImageLimit,
-  ShopImageMime,
   ShopType,
   VerifyCodeRule,
   NumberBoundary,
@@ -28,7 +23,7 @@ import { MemberBalanceService } from '../core/member/member-balance.service';
 import { MemberQueryService } from '../core/member/member-query.service';
 import { NotifyService } from '../core/notify/notify.service';
 import { ShopService } from '../core/shop/shop.service';
-import { KtvBookingOrder, KtvConsumeOrder, KtvRoom, KtvRoomImage } from './ktv.entities';
+import { KtvBookingOrder, KtvConsumeOrder, KtvRoom } from './ktv.entities';
 
 /**
  * 小程序创建 KTV 预订的入参。门店和包厢都会在服务端再次核对归属。
@@ -76,38 +71,6 @@ export interface KtvBookingOrderView {
 }
 
 /**
- * 前端使用的一张包厢图片。
- */
-export interface KtvRoomImageView {
-  imageId: string;
-  imageUrl: string;
-}
-
-/**
- * 上传文件里服务需要的字段。
- */
-export interface KtvRoomImageFile {
-  buffer: Buffer;
-  mimetype: string;
-  size: number;
-}
-
-/**
- * 带图片列表的包厢。
- */
-export interface KtvRoomView {
-  id: string;
-  shopId: string;
-  roomNo: string;
-  roomName: string;
-  roomType: string;
-  capacity: number;
-  price: string;
-  status: string;
-  imageList: KtvRoomImageView[];
-}
-
-/**
  * KTV 包厢、预订、核销、店内消费和取消退款。
  */
 @Injectable()
@@ -117,8 +80,6 @@ export class KtvService {
     private readonly dataSource: DataSource,
     @InjectRepository(KtvRoom)
     private readonly ktvRoomRepository: Repository<KtvRoom>,
-    @InjectRepository(KtvRoomImage)
-    private readonly ktvRoomImageRepository: Repository<KtvRoomImage>,
     @InjectRepository(KtvBookingOrder)
     private readonly ktvBookingOrderRepository: Repository<KtvBookingOrder>,
     private readonly shopService: ShopService,
@@ -128,13 +89,12 @@ export class KtvService {
   ) {}
 
   /**
-   * 查询当前门店全部包厢，并带上图片。
+   * 查询当前门店全部包厢。
    */
-  async pageRooms(): Promise<PageResult<KtvRoomView>> {
-    const roomList = await this.ktvRoomRepository.find({
+  async pageRooms(): Promise<PageResult<KtvRoom>> {
+    const list = await this.ktvRoomRepository.find({
       order: { id: 'DESC' },
     });
-    const list = await this.toRoomViewList(roomList);
     return { list, total: list.length, page: PageSetting.DEFAULT_PAGE, pageSize: list.length };
   }
 
@@ -152,15 +112,14 @@ export class KtvService {
   /**
    * 新建当前门店的包厢。
    */
-  async createRoom(command: SaveKtvRoomCommand): Promise<KtvRoomView> {
+  async createRoom(command: SaveKtvRoomCommand): Promise<KtvRoom> {
     this.assertRoomCommand(command);
     const currentShopId = this.requireCurrentShopId();
     const ktvRoom = new KtvRoom();
     ktvRoom.shopId = currentShopId;
     this.fillRoom(ktvRoom, command);
     try {
-      const savedRoom = await this.ktvRoomRepository.save(ktvRoom);
-      return this.toRoomView(savedRoom, []);
+      return await this.ktvRoomRepository.save(ktvRoom);
     } catch (error) {
       this.rethrowDuplicateRoom(error);
     }
@@ -169,7 +128,7 @@ export class KtvService {
   /**
    * 修改当前门店的包厢。其他门店的包厢会被数据权限滤掉。
    */
-  async updateRoom(roomId: string, command: SaveKtvRoomCommand): Promise<KtvRoomView> {
+  async updateRoom(roomId: string, command: SaveKtvRoomCommand): Promise<KtvRoom> {
     this.assertRoomCommand(command);
     const ktvRoom = await this.ktvRoomRepository.findOne({ where: { id: roomId } });
     if (isEmpty(ktvRoom)) {
@@ -177,64 +136,10 @@ export class KtvService {
     }
     this.fillRoom(ktvRoom, command);
     try {
-      const savedRoom = await this.ktvRoomRepository.save(ktvRoom);
-      const viewList = await this.toRoomViewList([savedRoom]);
-      return viewList[0];
+      return await this.ktvRoomRepository.save(ktvRoom);
     } catch (error) {
       this.rethrowDuplicateRoom(error);
     }
-  }
-
-  /**
-   * 给当前门店的包厢追加一张图片。
-   */
-  async addRoomImage(roomId: string, file: KtvRoomImageFile): Promise<KtvRoomImageView> {
-    const ktvRoom = await this.requireRoom(roomId);
-    if (isEmpty(file) || isEmpty(file.buffer) || file.buffer.length === 0) {
-      throw new BusinessException('请选择图片');
-    }
-    const extension = this.resolveImageExtension(file.mimetype);
-    if (file.size > ShopImageLimit.MAX_BYTES) {
-      throw new BusinessException('图片不能超过5MB');
-    }
-    const roomIdValue = toIdentifier(ktvRoom.id);
-    const imageCount = await this.ktvRoomImageRepository.count({ where: { roomId: roomIdValue } });
-    if (imageCount >= ShopImageLimit.MAX_COUNT) {
-      throw new BusinessException('包厢图片最多6张');
-    }
-    const fileName = `${randomUUID()}${extension}`;
-    const directoryPath = join(process.cwd(), 'uploads', 'ktv-room', roomIdValue);
-    await mkdir(directoryPath, { recursive: true });
-    await writeFile(join(directoryPath, fileName), file.buffer);
-    const roomImage = new KtvRoomImage();
-    roomImage.roomId = roomIdValue;
-    roomImage.imageUrl = `/uploads/ktv-room/${roomIdValue}/${fileName}`;
-    roomImage.sortOrder = imageCount;
-    const savedImage = await this.ktvRoomImageRepository.save(roomImage);
-    return this.toImageView(savedImage);
-  }
-
-  /**
-   * 删除当前门店包厢的一张图片，并删掉磁盘文件。
-   */
-  async removeRoomImage(roomId: string, imageId: string): Promise<void> {
-    const ktvRoom = await this.requireRoom(roomId);
-    const roomIdValue = toIdentifier(ktvRoom.id);
-    const roomImage = await this.ktvRoomImageRepository.findOne({ where: { id: imageId, roomId: roomIdValue } });
-    if (isEmpty(roomImage)) {
-      throw new BusinessException('包厢图片不存在');
-    }
-    const fileName = roomImage.imageUrl.slice(roomImage.imageUrl.lastIndexOf('/') + 1);
-    const filePath = join(process.cwd(), 'uploads', 'ktv-room', roomIdValue, fileName);
-    try {
-      await unlink(filePath);
-    } catch (error) {
-      const errorCode = (error as { code?: string }).code;
-      if (errorCode !== 'ENOENT') {
-        throw error;
-      }
-    }
-    await this.ktvRoomImageRepository.delete({ id: roomImage.id });
   }
 
   /**
@@ -482,78 +387,6 @@ export class KtvService {
   /**
    * 包厢编号在同一门店重复时给出明确提示。
    */
-  /**
-   * 确认包厢属于当前门店。
-   */
-  private async requireRoom(roomId: string): Promise<KtvRoom> {
-    const ktvRoom = await this.ktvRoomRepository.findOne({ where: { id: roomId } });
-    if (isEmpty(ktvRoom)) {
-      throw new BusinessException('包厢不存在');
-    }
-    return ktvRoom;
-  }
-
-  /**
-   * 按图片类型得到后缀。不支持的类型直接拒绝。
-   */
-  private resolveImageExtension(mimetype: string): string {
-    if (mimetype === ShopImageMime.JPEG) {
-      return '.jpg';
-    }
-    if (mimetype === ShopImageMime.PNG) {
-      return '.png';
-    }
-    if (mimetype === ShopImageMime.WEBP) {
-      return '.webp';
-    }
-    throw new BusinessException('只支持 jpg、png、webp');
-  }
-
-  /**
-   * 转成前端使用的图片字段。
-   */
-  private toImageView(roomImage: KtvRoomImage): KtvRoomImageView {
-    return {
-      imageId: toIdentifier(roomImage.id),
-      imageUrl: roomImage.imageUrl,
-    };
-  }
-
-  /**
-   * 转成带空图片列表的包厢字段。
-   */
-  private toRoomView(room: KtvRoom, imageList: KtvRoomImageView[]): KtvRoomView {
-    return {
-      id: toIdentifier(room.id),
-      shopId: toIdentifier(room.shopId),
-      roomNo: room.roomNo,
-      roomName: room.roomName,
-      roomType: room.roomType,
-      capacity: room.capacity,
-      price: room.price,
-      status: room.status,
-      imageList,
-    };
-  }
-
-  /**
-   * 批量转成带图片列表的包厢字段。
-   */
-  private async toRoomViewList(roomList: KtvRoom[]): Promise<KtvRoomView[]> {
-    const roomIdList = roomList.map((room) => toIdentifier(room.id));
-    const imageList = roomIdList.length === 0 ? [] : await this.ktvRoomImageRepository.find({
-      where: { roomId: In(roomIdList) },
-      order: { sortOrder: 'ASC', id: 'ASC' },
-    });
-    return roomList.map((room) => {
-      const roomId = toIdentifier(room.id);
-      const roomImageList = imageList
-        .filter((roomImage) => toIdentifier(roomImage.roomId) === roomId)
-        .map((roomImage) => this.toImageView(roomImage));
-      return this.toRoomView(room, roomImageList);
-    });
-  }
-
   private rethrowDuplicateRoom(error: unknown): never {
     if (isDuplicateEntryError(error)) {
       throw new BusinessException('包厢编号已存在');

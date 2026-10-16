@@ -1,7 +1,6 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { IsIn, IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
-import { HotelBedType, HotelRoomStatus, ModuleCode, PermissionCode, RecordStatus, ShopImageLimit } from '../common/constants';
+import { HotelBedType, HotelRoomStatus, ModuleCode, PermissionCode, RecordStatus } from '../common/constants';
 import { PageQueryDto } from '../common/dto/page-query.dto';
 import { CurrentAccount } from '../common/decorators/current-account.decorator';
 import { RequireModule, RequirePermission, RequiresShop } from '../common/decorators/auth.decorators';
@@ -147,26 +146,6 @@ export class HotelAdminController {
   @RequirePermission(PermissionCode.HOTEL_ROOM_SAVE)
   createRoom(@Body() saveHotelRoomDto: SaveHotelRoomDto) {
     return this.hotelService.createRoom(saveHotelRoomDto);
-  }
-
-  /**
-   * 给当前门店的房间上传一张图片。
-   */
-  @Post('rooms/:roomId/images')
-  @RequirePermission(PermissionCode.HOTEL_ROOM_SAVE)
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: ShopImageLimit.MAX_BYTES } }))
-  addRoomImage(@Param('roomId') roomId: string, @UploadedFile() file: Express.Multer.File) {
-    return this.hotelService.addRoomImage(roomId, file);
-  }
-
-  /**
-   * 删除当前门店房间的一张图片。
-   */
-  @Delete('rooms/:roomId/images/:imageId')
-  @RequirePermission(PermissionCode.HOTEL_ROOM_SAVE)
-  async removeRoomImage(@Param('roomId') roomId: string, @Param('imageId') imageId: string) {
-    await this.hotelService.removeRoomImage(roomId, imageId);
-    return null;
   }
 
   /**

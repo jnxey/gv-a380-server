@@ -62,27 +62,6 @@ export class HotelRoom {
 }
 
 /**
- * 酒店房间图片。一个房间最多 6 张，张数由服务校验。
- */
-@Entity('hotel_room_image')
-export class HotelRoomImage {
-  @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
-  id: string;
-
-  @Column({ type: 'bigint', unsigned: true })
-  roomId: string;
-
-  @Column({ type: 'varchar', length: 255 })
-  imageUrl: string;
-
-  @Column({ type: 'int', unsigned: true, default: 0 })
-  sortOrder: number;
-
-  @CreateDateColumn({ type: 'datetime' })
-  createdAt: string;
-}
-
-/**
  * 酒店预订订单。预订不扣款，退房时结算房费。
  */
 @Entity('hotel_booking_order')
