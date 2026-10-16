@@ -75,9 +75,6 @@ export class KtvRoom {
   @Column({ type: 'int' })
   capacity: number;
 
-  @Column({ type: 'decimal', precision: 12, scale: 2, transformer: decimalTransformer })
-  price: string;
-
   @Column({ type: 'varchar', length: 16 })
   status: string;
 

@@ -86,7 +86,6 @@ export interface SaveKtvRoomCommand {
   roomName: string;
   roomTypeId: string;
   capacity: number;
-  price: string | number;
   status: string;
 }
 
@@ -333,7 +332,13 @@ export class KtvService {
       if (!isEmpty(conflictOrder)) {
         throw new BusinessException('该时段包厢已被预订');
       }
-      // 4. 写入待核销订单，金额等于包厢价格
+      // 4. 写入待核销订单，金额等于包厢类型的每小时价格
+      const ktvRoomType = await entityManager.getRepository(KtvRoomType).findOne({
+        where: { id: toIdentifier(ktvRoom.roomTypeId), shopId },
+      });
+      if (isEmpty(ktvRoomType)) {
+        throw new BusinessException('包厢类型不存在');
+      }
       const bookingOrder = new KtvBookingOrder();
       bookingOrder.shopId = shopId;
       bookingOrder.orderNo = createBusinessNo(BusinessNoPrefix.KTV_BOOKING);
@@ -342,7 +347,7 @@ export class KtvService {
       bookingOrder.bookingDate = command.bookingDate;
       bookingOrder.startTime = command.startTime;
       bookingOrder.endTime = command.endTime;
-      bookingOrder.amount = toMoneyString(ktvRoom.price);
+      bookingOrder.amount = toMoneyString(ktvRoomType.hourlyPrice);
       bookingOrder.orderStatus = KtvOrderStatus.PENDING_VERIFY;
       bookingOrder.verifyCode = await this.createUniqueVerifyCode(entityManager);
       const savedOrder = await entityManager.getRepository(KtvBookingOrder).save(bookingOrder);
@@ -522,9 +527,6 @@ export class KtvService {
     if (!isNumber(command.capacity) || Number(command.capacity) <= NumberBoundary.ZERO) {
       throw new BusinessException('容纳人数必须大于0');
     }
-    if (!isPositiveMoney(command.price)) {
-      throw new BusinessException('包厢价格必须大于0');
-    }
   }
 
   /**
@@ -661,7 +663,6 @@ export class KtvService {
     ktvRoom.roomName = command.roomName;
     ktvRoom.roomTypeId = command.roomTypeId;
     ktvRoom.capacity = Number(command.capacity);
-    ktvRoom.price = toMoneyString(command.price);
     ktvRoom.status = command.status;
   }
 

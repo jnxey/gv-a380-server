@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ArrayNotEmpty, IsArray, IsIn, IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
-import { HotelBedType, HotelRoomStatus, ModuleCode, PermissionCode, RecordStatus, ShopImageLimit } from '../common/constants';
+import { HotelRoomStatus, ModuleCode, PermissionCode, RecordStatus, ShopImageLimit } from '../common/constants';
 import { PageQueryDto } from '../common/dto/page-query.dto';
 import { CurrentAccount } from '../common/decorators/current-account.decorator';
 import { RequireModule, RequirePermission, RequiresShop } from '../common/decorators/auth.decorators';
@@ -15,9 +15,6 @@ export class SaveHotelRoomTypeDto {
   @IsString()
   @IsNotEmpty()
   typeName: string;
-
-  @IsIn(Object.values(HotelBedType))
-  bedType: string;
 
   @IsNotEmpty()
   price: string | number;

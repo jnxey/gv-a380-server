@@ -128,14 +128,14 @@ INSERT INTO ktv_room_type (id, shop_id, type_name, hourly_price, status, sort_or
 (5, 2, '中包', 400.00, 'ENABLED', 1),
 (6, 2, '大包', 600.00, 'ENABLED', 0);
 
-INSERT INTO ktv_room (id, shop_id, room_no, room_name, room_type_id, capacity, price, status, sort_order) VALUES
-(1, 1, 'A01', 'KTV01小包', 1, 4, 200.00, 'ENABLED', 1),
-(2, 1, 'A02', 'KTV01中包', 2, 8, 400.00, 'ENABLED', 0),
-(3, 2, 'B01', 'KTV02中包', 5, 8, 300.00, 'ENABLED', 0);
+INSERT INTO ktv_room (id, shop_id, room_no, room_name, room_type_id, capacity, status, sort_order) VALUES
+(1, 1, 'A01', 'KTV01小包', 1, 4, 'ENABLED', 1),
+(2, 1, 'A02', 'KTV01中包', 2, 8, 'ENABLED', 0),
+(3, 2, 'B01', 'KTV02中包', 5, 8, 'ENABLED', 0);
 
-INSERT INTO hotel_room_type (id, shop_id, type_name, bed_type, price, status, sort_order) VALUES
-(1, 3, '大床房', 'LARGE', 300.00, 'ENABLED', 1),
-(2, 3, '双床房', 'TWIN', 320.00, 'ENABLED', 0);
+INSERT INTO hotel_room_type (id, shop_id, type_name, price, status, sort_order) VALUES
+(1, 3, '大床房', 300.00, 'ENABLED', 1),
+(2, 3, '双床房', 320.00, 'ENABLED', 0);
 
 INSERT INTO hotel_room (id, shop_id, room_type_id, room_no, floor_no, room_status, sort_order) VALUES
 (1, 3, 1, '801', '8', 'IDLE', 0),

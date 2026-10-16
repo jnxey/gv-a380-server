@@ -8,7 +8,6 @@ import { DataSource, FindOptionsWhere, In, Repository } from 'typeorm';
 import {
   BusinessNoPrefix,
   FinanceBizType,
-  HotelBedType,
   HotelOrderStatus,
   HotelRoomStatus,
   HotelStayStatus,
@@ -57,7 +56,6 @@ export interface CreateHotelBookingCommand {
  */
 export interface SaveHotelRoomTypeCommand {
   typeName: string;
-  bedType: string;
   price: string | number;
   status: string;
 }
@@ -86,7 +84,6 @@ export interface HotelRoomTypeView {
   id: string;
   shopId: string;
   typeName: string;
-  bedType: string;
   price: string;
   status: string;
   imageList: HotelRoomTypeImageView[];
@@ -582,9 +579,6 @@ export class HotelService {
    * 校验房型参数。
    */
   private assertRoomTypeCommand(command: SaveHotelRoomTypeCommand): void {
-    if (!isOneOf(command.bedType, Object.values(HotelBedType))) {
-      throw new BusinessException('床型不正确');
-    }
     if (!isOneOf(command.status, Object.values(RecordStatus))) {
       throw new BusinessException('房型状态不正确');
     }
@@ -658,7 +652,6 @@ export class HotelService {
    */
   private fillRoomType(hotelRoomType: HotelRoomType, command: SaveHotelRoomTypeCommand): void {
     hotelRoomType.typeName = command.typeName;
-    hotelRoomType.bedType = command.bedType;
     hotelRoomType.price = toMoneyString(command.price);
     hotelRoomType.status = command.status;
   }
@@ -697,7 +690,6 @@ export class HotelService {
       id: toIdentifier(roomType.id),
       shopId: toIdentifier(roomType.shopId),
       typeName: roomType.typeName,
-      bedType: roomType.bedType,
       price: roomType.price,
       status: roomType.status,
       imageList,

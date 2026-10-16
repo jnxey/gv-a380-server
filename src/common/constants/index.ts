@@ -159,14 +159,6 @@ export const HotelRoomStatus = {
 } as const;
 
 /**
- * 酒店床型。
- */
-export const HotelBedType = {
-  LARGE: 'LARGE',
-  TWIN: 'TWIN',
-} as const;
-
-/**
  * 积分变动类型。
  */
 export const PointChangeType = {

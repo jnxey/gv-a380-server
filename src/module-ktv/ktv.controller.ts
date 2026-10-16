@@ -45,9 +45,6 @@ export class SaveKtvRoomDto {
   @Min(1)
   capacity: number;
 
-  @IsNotEmpty()
-  price: string | number;
-
   @IsIn(Object.values(RecordStatus))
   status: string;
 }
