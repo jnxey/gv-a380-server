@@ -24,6 +24,9 @@ export class HotelRoomType {
   @Column({ type: 'varchar', length: 16 })
   status: string;
 
+  @Column({ type: 'int', unsigned: true, default: 0 })
+  sortOrder: number;
+
   @CreateDateColumn({ type: 'datetime' })
   createdAt: string;
 
@@ -74,6 +77,9 @@ export class HotelRoom {
 
   @Column({ type: 'varchar', length: 16 })
   roomStatus: string;
+
+  @Column({ type: 'int', unsigned: true, default: 0 })
+  sortOrder: number;
 
   @CreateDateColumn({ type: 'datetime' })
   createdAt: string;

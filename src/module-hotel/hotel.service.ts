@@ -29,6 +29,7 @@ import {
   formatShanghaiDateTime,
   isDuplicateEntryError,
   isEmpty,
+  isNumber,
   isOneOf,
   isPositiveMoney,
   resolvePage,
@@ -148,17 +149,14 @@ export class HotelService {
   ) {}
 
   /**
-   * 后台分页查询当前门店房型。
+   * 查询当前门店全部房型，并带上图片。
    */
-  async pageRoomTypes(pageValue: unknown, pageSizeValue: unknown): Promise<PageResult<HotelRoomTypeView>> {
-    const pageResult = resolvePage(pageValue, pageSizeValue);
-    const [roomTypeList, total] = await this.hotelRoomTypeRepository.findAndCount({
-      order: { id: 'DESC' },
-      skip: pageResult.skip,
-      take: pageResult.pageSize,
+  async pageRoomTypes(): Promise<PageResult<HotelRoomTypeView>> {
+    const roomTypeList = await this.hotelRoomTypeRepository.find({
+      order: { sortOrder: 'ASC', id: 'ASC' },
     });
     const list = await this.toRoomTypeViewList(roomTypeList);
-    return { list, total, page: pageResult.page, pageSize: pageResult.pageSize };
+    return { list, total: list.length, page: PageSetting.DEFAULT_PAGE, pageSize: list.length };
   }
 
   /**
@@ -179,6 +177,7 @@ export class HotelService {
     this.assertRoomTypeCommand(command);
     const hotelRoomType = new HotelRoomType();
     hotelRoomType.shopId = this.requireCurrentShopId();
+    hotelRoomType.sortOrder = await this.nextSortOrder(this.hotelRoomTypeRepository);
     this.fillRoomType(hotelRoomType, command);
     const savedRoomType = await this.hotelRoomTypeRepository.save(hotelRoomType);
     return this.toRoomTypeView(savedRoomType, []);
@@ -197,6 +196,13 @@ export class HotelService {
     const savedRoomType = await this.hotelRoomTypeRepository.save(hotelRoomType);
     const viewList = await this.toRoomTypeViewList([savedRoomType]);
     return viewList[0];
+  }
+
+  /**
+   * 按拖动结果重排当前门店的全部房型。
+   */
+  async sortRoomTypes(idList: string[]): Promise<void> {
+    await this.applySortOrder(this.hotelRoomTypeRepository, HotelRoomType, idList, '房型排序不完整');
   }
 
   /**
@@ -252,9 +258,9 @@ export class HotelService {
   }
 
   /**
-   * 查询当前门店房间。可按房态、房型筛选。
+   * 查询当前门店房间。不传页码时返回全部，传入页码时仍分页。可按房态、房型筛选。
    */
-  async pageRooms(roomStatus: string, roomTypeId: string): Promise<PageResult<HotelRoom>> {
+  async pageRooms(roomStatus: string, roomTypeId: string, pageValue: unknown, pageSizeValue: unknown): Promise<PageResult<HotelRoom>> {
     if (!isEmpty(roomStatus) && !isOneOf(roomStatus, Object.values(HotelRoomStatus))) {
       throw new BusinessException('房态不正确');
     }
@@ -265,11 +271,21 @@ export class HotelService {
     if (!isEmpty(roomTypeId)) {
       whereCondition.roomTypeId = roomTypeId;
     }
-    const list = await this.hotelRoomRepository.find({
+    if (isNumber(pageValue) !== true) {
+      const list = await this.hotelRoomRepository.find({
+        where: whereCondition,
+        order: { sortOrder: 'ASC', id: 'ASC' },
+      });
+      return { list, total: list.length, page: PageSetting.DEFAULT_PAGE, pageSize: list.length };
+    }
+    const pageResult = resolvePage(pageValue, pageSizeValue);
+    const [list, total] = await this.hotelRoomRepository.findAndCount({
       where: whereCondition,
-      order: { roomNo: 'ASC' },
+      order: { sortOrder: 'ASC', id: 'ASC' },
+      skip: pageResult.skip,
+      take: pageResult.pageSize,
     });
-    return { list, total: list.length, page: PageSetting.DEFAULT_PAGE, pageSize: list.length };
+    return { list, total, page: pageResult.page, pageSize: pageResult.pageSize };
   }
 
   /**
@@ -281,6 +297,7 @@ export class HotelService {
     await this.requireRoomType(command.roomTypeId);
     const hotelRoom = new HotelRoom();
     hotelRoom.shopId = currentShopId;
+    hotelRoom.sortOrder = await this.nextSortOrder(this.hotelRoomRepository);
     this.fillRoom(hotelRoom, command);
     try {
       return await this.hotelRoomRepository.save(hotelRoom);
@@ -311,6 +328,13 @@ export class HotelService {
       }
       throw error;
     }
+  }
+
+  /**
+   * 按拖动结果重排当前门店的全部房间。
+   */
+  async sortRooms(idList: string[]): Promise<void> {
+    await this.applySortOrder(this.hotelRoomRepository, HotelRoom, idList, '房间排序不完整');
   }
 
   /**
@@ -579,6 +603,54 @@ export class HotelService {
     if (isEmpty(command.roomNo) || isEmpty(command.floorNo)) {
       throw new BusinessException('房间号和楼层不能为空');
     }
+  }
+
+  /**
+   * 新建时排到当前门店最后。没有记录时从 0 开始。
+   */
+  private async nextSortOrder(repository: Repository<HotelRoomType> | Repository<HotelRoom>): Promise<number> {
+    const maxRow = await repository
+      .createQueryBuilder('record')
+      .select('MAX(record.sortOrder)', 'maxSortOrder')
+      .getRawOne<{ maxSortOrder: number | string | null }>();
+    if (isEmpty(maxRow) || isEmpty(maxRow.maxSortOrder)) {
+      return 0;
+    }
+    return Number(maxRow.maxSortOrder) + 1;
+  }
+
+  /**
+   * 核对编号就是当前门店的全部记录，再按数组下标写回排序。
+   */
+  private async applySortOrder(
+    repository: Repository<HotelRoomType> | Repository<HotelRoom>,
+    entity: typeof HotelRoomType | typeof HotelRoom,
+    idList: string[],
+    incompleteMessage: string,
+  ): Promise<void> {
+    if (isEmpty(idList)) {
+      throw new BusinessException(incompleteMessage);
+    }
+    // 1. 只取当前门店的编号，门店条件由数据权限加上
+    const recordList = await repository.find();
+    const existingIdSet = new Set(recordList.map((record) => toIdentifier(record.id)));
+    if (idList.length !== existingIdSet.size) {
+      throw new BusinessException(incompleteMessage);
+    }
+    // 2. 不能缺、不能多、不能重复
+    const seenIdSet = new Set<string>();
+    idList.forEach((recordId) => {
+      if (existingIdSet.has(recordId) !== true || seenIdSet.has(recordId)) {
+        throw new BusinessException(incompleteMessage);
+      }
+      seenIdSet.add(recordId);
+    });
+    // 3. 下标就是新的排序
+    await this.dataSource.transaction(async (entityManager) => {
+      for (let sortOrder = 0; sortOrder < idList.length; sortOrder += 1) {
+        await entityManager.update(entity, { id: idList[sortOrder] }, { sortOrder });
+      }
+    });
   }
 
   /**

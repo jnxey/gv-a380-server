@@ -120,24 +120,24 @@ INSERT INTO sys_user_shop (id, user_id, shop_id) VALUES
 INSERT INTO member_account (id, member_no, member_name, mobile, balance, points, status, shop_id) VALUES
 (1, 'M3800001', '测试会员', '13800000000', 1000.00, 0, 'ENABLED', 1);
 
-INSERT INTO ktv_room_type (id, shop_id, type_name, hourly_price, status) VALUES
-(1, 1, '小包', 200.00, 'ENABLED'),
-(2, 1, '中包', 400.00, 'ENABLED'),
-(3, 1, '大包', 600.00, 'ENABLED'),
-(4, 2, '小包', 200.00, 'ENABLED'),
-(5, 2, '中包', 400.00, 'ENABLED'),
-(6, 2, '大包', 600.00, 'ENABLED');
+INSERT INTO ktv_room_type (id, shop_id, type_name, hourly_price, status, sort_order) VALUES
+(1, 1, '小包', 200.00, 'ENABLED', 2),
+(2, 1, '中包', 400.00, 'ENABLED', 1),
+(3, 1, '大包', 600.00, 'ENABLED', 0),
+(4, 2, '小包', 200.00, 'ENABLED', 2),
+(5, 2, '中包', 400.00, 'ENABLED', 1),
+(6, 2, '大包', 600.00, 'ENABLED', 0);
 
-INSERT INTO ktv_room (id, shop_id, room_no, room_name, room_type_id, capacity, price, status) VALUES
-(1, 1, 'A01', 'KTV01小包', 1, 4, 200.00, 'ENABLED'),
-(2, 1, 'A02', 'KTV01中包', 2, 8, 400.00, 'ENABLED'),
-(3, 2, 'B01', 'KTV02中包', 5, 8, 300.00, 'ENABLED');
+INSERT INTO ktv_room (id, shop_id, room_no, room_name, room_type_id, capacity, price, status, sort_order) VALUES
+(1, 1, 'A01', 'KTV01小包', 1, 4, 200.00, 'ENABLED', 1),
+(2, 1, 'A02', 'KTV01中包', 2, 8, 400.00, 'ENABLED', 0),
+(3, 2, 'B01', 'KTV02中包', 5, 8, 300.00, 'ENABLED', 0);
 
-INSERT INTO hotel_room_type (id, shop_id, type_name, bed_type, price, status) VALUES
-(1, 3, '大床房', 'LARGE', 300.00, 'ENABLED'),
-(2, 3, '双床房', 'TWIN', 320.00, 'ENABLED');
+INSERT INTO hotel_room_type (id, shop_id, type_name, bed_type, price, status, sort_order) VALUES
+(1, 3, '大床房', 'LARGE', 300.00, 'ENABLED', 1),
+(2, 3, '双床房', 'TWIN', 320.00, 'ENABLED', 0);
 
-INSERT INTO hotel_room (id, shop_id, room_type_id, room_no, floor_no, room_status) VALUES
-(1, 3, 1, '801', '8', 'IDLE'),
-(2, 3, 1, '802', '8', 'IDLE'),
-(3, 3, 2, '803', '8', 'IDLE');
+INSERT INTO hotel_room (id, shop_id, room_type_id, room_no, floor_no, room_status, sort_order) VALUES
+(1, 3, 1, '801', '8', 'IDLE', 0),
+(2, 3, 1, '802', '8', 'IDLE', 1),
+(3, 3, 2, '803', '8', 'IDLE', 2);

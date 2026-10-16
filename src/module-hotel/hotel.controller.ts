@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { IsIn, IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
+import { ArrayNotEmpty, IsArray, IsIn, IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
 import { HotelBedType, HotelRoomStatus, ModuleCode, PermissionCode, RecordStatus, ShopImageLimit } from '../common/constants';
 import { PageQueryDto } from '../common/dto/page-query.dto';
 import { CurrentAccount } from '../common/decorators/current-account.decorator';
@@ -24,6 +24,16 @@ export class SaveHotelRoomTypeDto {
 
   @IsIn(Object.values(RecordStatus))
   status: string;
+}
+
+/**
+ * 拖动排序提交的编号列表。
+ */
+export class SortIdListDto {
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsString({ each: true })
+  idList: string[];
 }
 
 /**
@@ -105,12 +115,12 @@ export class HotelAdminController {
   constructor(private readonly hotelService: HotelService) {}
 
   /**
-   * 分页查询房型。
+   * 查询当前门店全部房型。
    */
   @Get('room-types')
   @RequirePermission(PermissionCode.HOTEL_ROOM_TYPE_QUERY)
-  pageRoomTypes(@Query() pageQueryDto: PageQueryDto) {
-    return this.hotelService.pageRoomTypes(pageQueryDto.page, pageQueryDto.pageSize);
+  pageRoomTypes() {
+    return this.hotelService.pageRoomTypes();
   }
 
   /**
@@ -143,6 +153,16 @@ export class HotelAdminController {
   }
 
   /**
+   * 按拖动结果保存房型顺序。
+   */
+  @Put('room-types/sort')
+  @RequirePermission(PermissionCode.HOTEL_ROOM_TYPE_SAVE)
+  async sortRoomTypes(@Body() sortIdListDto: SortIdListDto) {
+    await this.hotelService.sortRoomTypes(sortIdListDto.idList);
+    return null;
+  }
+
+  /**
    * 修改房型。
    */
   @Put('room-types/:roomTypeId')
@@ -152,12 +172,17 @@ export class HotelAdminController {
   }
 
   /**
-   * 查询当前门店房间，一次返回全部。房态和房型筛选仍然生效。
+   * 查询当前门店房间。不传页码时返回全部，传入页码时仍分页。房态和房型筛选仍然生效。
    */
   @Get('rooms')
   @RequirePermission(PermissionCode.HOTEL_ROOM_QUERY)
   pageRooms(@Query() hotelRoomQueryDto: HotelRoomQueryDto) {
-    return this.hotelService.pageRooms(hotelRoomQueryDto.roomStatus || '', hotelRoomQueryDto.roomTypeId || '');
+    return this.hotelService.pageRooms(
+      hotelRoomQueryDto.roomStatus || '',
+      hotelRoomQueryDto.roomTypeId || '',
+      hotelRoomQueryDto.page,
+      hotelRoomQueryDto.pageSize,
+    );
   }
 
   /**
@@ -167,6 +192,16 @@ export class HotelAdminController {
   @RequirePermission(PermissionCode.HOTEL_ROOM_SAVE)
   createRoom(@Body() saveHotelRoomDto: SaveHotelRoomDto) {
     return this.hotelService.createRoom(saveHotelRoomDto);
+  }
+
+  /**
+   * 按拖动结果保存房间顺序。
+   */
+  @Put('rooms/sort')
+  @RequirePermission(PermissionCode.HOTEL_ROOM_SAVE)
+  async sortRooms(@Body() sortIdListDto: SortIdListDto) {
+    await this.hotelService.sortRooms(sortIdListDto.idList);
+    return null;
   }
 
   /**

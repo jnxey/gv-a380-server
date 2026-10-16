@@ -135,17 +135,14 @@ export class KtvService {
   ) {}
 
   /**
-   * 后台分页查询当前门店包厢类型。
+   * 查询当前门店全部包厢类型，并带上图片。
    */
-  async pageRoomTypes(pageValue: unknown, pageSizeValue: unknown): Promise<PageResult<KtvRoomTypeView>> {
-    const pageResult = resolvePage(pageValue, pageSizeValue);
-    const [roomTypeList, total] = await this.ktvRoomTypeRepository.findAndCount({
-      order: { id: 'DESC' },
-      skip: pageResult.skip,
-      take: pageResult.pageSize,
+  async pageRoomTypes(): Promise<PageResult<KtvRoomTypeView>> {
+    const roomTypeList = await this.ktvRoomTypeRepository.find({
+      order: { sortOrder: 'ASC', id: 'ASC' },
     });
     const list = await this.toRoomTypeViewList(roomTypeList);
-    return { list, total, page: pageResult.page, pageSize: pageResult.pageSize };
+    return { list, total: list.length, page: PageSetting.DEFAULT_PAGE, pageSize: list.length };
   }
 
   /**
@@ -155,6 +152,7 @@ export class KtvService {
     this.assertRoomTypeCommand(command);
     const ktvRoomType = new KtvRoomType();
     ktvRoomType.shopId = this.requireCurrentShopId();
+    ktvRoomType.sortOrder = await this.nextSortOrder(this.ktvRoomTypeRepository);
     this.fillRoomType(ktvRoomType, command);
     const savedRoomType = await this.ktvRoomTypeRepository.save(ktvRoomType);
     return this.toRoomTypeView(savedRoomType, []);
@@ -173,6 +171,13 @@ export class KtvService {
     const savedRoomType = await this.ktvRoomTypeRepository.save(ktvRoomType);
     const viewList = await this.toRoomTypeViewList([savedRoomType]);
     return viewList[0];
+  }
+
+  /**
+   * 按拖动结果重排当前门店的全部包厢类型。
+   */
+  async sortRoomTypes(idList: string[]): Promise<void> {
+    await this.applySortOrder(this.ktvRoomTypeRepository, KtvRoomType, idList, '包厢类型排序不完整');
   }
 
   /**
@@ -232,7 +237,7 @@ export class KtvService {
    */
   async pageRooms(): Promise<PageResult<KtvRoom>> {
     const list = await this.ktvRoomRepository.find({
-      order: { id: 'DESC' },
+      order: { sortOrder: 'ASC', id: 'ASC' },
     });
     return { list, total: list.length, page: PageSetting.DEFAULT_PAGE, pageSize: list.length };
   }
@@ -257,6 +262,7 @@ export class KtvService {
     await this.requireRoomType(command.roomTypeId);
     const ktvRoom = new KtvRoom();
     ktvRoom.shopId = currentShopId;
+    ktvRoom.sortOrder = await this.nextSortOrder(this.ktvRoomRepository);
     this.fillRoom(ktvRoom, command);
     try {
       return await this.ktvRoomRepository.save(ktvRoom);
@@ -281,6 +287,13 @@ export class KtvService {
     } catch (error) {
       this.rethrowDuplicateRoom(error);
     }
+  }
+
+  /**
+   * 按拖动结果重排当前门店的全部包厢。
+   */
+  async sortRooms(idList: string[]): Promise<void> {
+    await this.applySortOrder(this.ktvRoomRepository, KtvRoom, idList, '包厢排序不完整');
   }
 
   /**
@@ -512,6 +525,54 @@ export class KtvService {
     if (!isPositiveMoney(command.price)) {
       throw new BusinessException('包厢价格必须大于0');
     }
+  }
+
+  /**
+   * 新建时排到当前门店最后。没有记录时从 0 开始。
+   */
+  private async nextSortOrder(repository: Repository<KtvRoomType> | Repository<KtvRoom>): Promise<number> {
+    const maxRow = await repository
+      .createQueryBuilder('record')
+      .select('MAX(record.sortOrder)', 'maxSortOrder')
+      .getRawOne<{ maxSortOrder: number | string | null }>();
+    if (isEmpty(maxRow) || isEmpty(maxRow.maxSortOrder)) {
+      return 0;
+    }
+    return Number(maxRow.maxSortOrder) + 1;
+  }
+
+  /**
+   * 核对编号就是当前门店的全部记录，再按数组下标写回排序。
+   */
+  private async applySortOrder(
+    repository: Repository<KtvRoomType> | Repository<KtvRoom>,
+    entity: typeof KtvRoomType | typeof KtvRoom,
+    idList: string[],
+    incompleteMessage: string,
+  ): Promise<void> {
+    if (isEmpty(idList)) {
+      throw new BusinessException(incompleteMessage);
+    }
+    // 1. 只取当前门店的编号，门店条件由数据权限加上
+    const recordList = await repository.find();
+    const existingIdSet = new Set(recordList.map((record) => toIdentifier(record.id)));
+    if (idList.length !== existingIdSet.size) {
+      throw new BusinessException(incompleteMessage);
+    }
+    // 2. 不能缺、不能多、不能重复
+    const seenIdSet = new Set<string>();
+    idList.forEach((recordId) => {
+      if (existingIdSet.has(recordId) !== true || seenIdSet.has(recordId)) {
+        throw new BusinessException(incompleteMessage);
+      }
+      seenIdSet.add(recordId);
+    });
+    // 3. 下标就是新的排序
+    await this.dataSource.transaction(async (entityManager) => {
+      for (let sortOrder = 0; sortOrder < idList.length; sortOrder += 1) {
+        await entityManager.update(entity, { id: idList[sortOrder] }, { sortOrder });
+      }
+    });
   }
 
   /**

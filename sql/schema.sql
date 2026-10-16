@@ -223,10 +223,12 @@ CREATE TABLE ktv_room_type (
   type_name VARCHAR(64) NOT NULL COMMENT '包厢类型名称',
   hourly_price DECIMAL(12,2) NOT NULL COMMENT '每小时价格',
   status VARCHAR(16) NOT NULL COMMENT '状态：ENABLED、DISABLED',
+  sort_order INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '排序，从0开始',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   KEY idx_ktv_room_type_shop_status (shop_id, status),
+  KEY idx_ktv_room_type_shop_sort (shop_id, sort_order),
   CONSTRAINT fk_ktv_room_type_shop FOREIGN KEY (shop_id) REFERENCES shop (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='KTV包厢类型';
 
@@ -250,11 +252,13 @@ CREATE TABLE ktv_room (
   capacity INT NOT NULL COMMENT '容纳人数',
   price DECIMAL(12,2) NOT NULL COMMENT '预订价格',
   status VARCHAR(16) NOT NULL COMMENT '状态：ENABLED、DISABLED',
+  sort_order INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '排序，从0开始',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_ktv_room_shop_room_no (shop_id, room_no),
   KEY idx_ktv_room_shop_status (shop_id, status),
+  KEY idx_ktv_room_shop_sort (shop_id, sort_order),
   KEY idx_ktv_room_type_id (room_type_id),
   CONSTRAINT fk_ktv_room_shop FOREIGN KEY (shop_id) REFERENCES shop (id),
   CONSTRAINT fk_ktv_room_type FOREIGN KEY (room_type_id) REFERENCES ktv_room_type (id)
@@ -315,10 +319,12 @@ CREATE TABLE hotel_room_type (
   bed_type VARCHAR(32) NOT NULL COMMENT '床型：LARGE、TWIN',
   price DECIMAL(12,2) NOT NULL COMMENT '每晚价格',
   status VARCHAR(16) NOT NULL COMMENT '状态：ENABLED、DISABLED',
+  sort_order INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '排序，从0开始',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   KEY idx_hotel_room_type_shop_status (shop_id, status),
+  KEY idx_hotel_room_type_shop_sort (shop_id, sort_order),
   CONSTRAINT fk_hotel_room_type_shop FOREIGN KEY (shop_id) REFERENCES shop (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='酒店房型';
 
@@ -340,11 +346,13 @@ CREATE TABLE hotel_room (
   room_no VARCHAR(32) NOT NULL COMMENT '房间号',
   floor_no VARCHAR(16) NOT NULL COMMENT '楼层',
   room_status VARCHAR(16) NOT NULL COMMENT '房态：IDLE、OCCUPIED、MAINTENANCE',
+  sort_order INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '排序，从0开始',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_hotel_room_shop_room_no (shop_id, room_no),
   KEY idx_hotel_room_shop_status (shop_id, room_status),
+  KEY idx_hotel_room_shop_sort (shop_id, sort_order),
   KEY idx_hotel_room_type_id (room_type_id),
   CONSTRAINT fk_hotel_room_shop FOREIGN KEY (shop_id) REFERENCES shop (id),
   CONSTRAINT fk_hotel_room_type FOREIGN KEY (room_type_id) REFERENCES hotel_room_type (id)

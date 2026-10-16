@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Min } from 'class-validator';
+import { ArrayNotEmpty, IsArray, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Min } from 'class-validator';
 import { ModuleCode, PermissionCode, RecordStatus, ShopImageLimit } from '../common/constants';
 import { PageQueryDto } from '../common/dto/page-query.dto';
 import { CurrentAccount } from '../common/decorators/current-account.decorator';
@@ -50,6 +50,16 @@ export class SaveKtvRoomDto {
 
   @IsIn(Object.values(RecordStatus))
   status: string;
+}
+
+/**
+ * 拖动排序提交的编号列表。
+ */
+export class SortIdListDto {
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsString({ each: true })
+  idList: string[];
 }
 
 /**
@@ -105,12 +115,12 @@ export class KtvAdminController {
   constructor(private readonly ktvService: KtvService) {}
 
   /**
-   * 分页查询当前门店包厢类型。
+   * 查询当前门店全部包厢类型。
    */
   @Get('room-types')
   @RequirePermission(PermissionCode.KTV_ROOM_TYPE_QUERY)
-  pageRoomTypes(@Query() pageQueryDto: PageQueryDto) {
-    return this.ktvService.pageRoomTypes(pageQueryDto.page, pageQueryDto.pageSize);
+  pageRoomTypes() {
+    return this.ktvService.pageRoomTypes();
   }
 
   /**
@@ -143,6 +153,16 @@ export class KtvAdminController {
   }
 
   /**
+   * 按拖动结果保存包厢类型顺序。
+   */
+  @Put('room-types/sort')
+  @RequirePermission(PermissionCode.KTV_ROOM_TYPE_SAVE)
+  async sortRoomTypes(@Body() sortIdListDto: SortIdListDto) {
+    await this.ktvService.sortRoomTypes(sortIdListDto.idList);
+    return null;
+  }
+
+  /**
    * 修改包厢类型。
    */
   @Put('room-types/:roomTypeId')
@@ -167,6 +187,16 @@ export class KtvAdminController {
   @RequirePermission(PermissionCode.KTV_ROOM_SAVE)
   createRoom(@Body() saveKtvRoomDto: SaveKtvRoomDto) {
     return this.ktvService.createRoom(saveKtvRoomDto);
+  }
+
+  /**
+   * 按拖动结果保存包厢顺序。
+   */
+  @Put('rooms/sort')
+  @RequirePermission(PermissionCode.KTV_ROOM_SAVE)
+  async sortRooms(@Body() sortIdListDto: SortIdListDto) {
+    await this.ktvService.sortRooms(sortIdListDto.idList);
+    return null;
   }
 
   /**

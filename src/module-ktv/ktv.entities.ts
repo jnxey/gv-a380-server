@@ -21,6 +21,9 @@ export class KtvRoomType {
   @Column({ type: 'varchar', length: 16 })
   status: string;
 
+  @Column({ type: 'int', unsigned: true, default: 0 })
+  sortOrder: number;
+
   @CreateDateColumn({ type: 'datetime' })
   createdAt: string;
 
@@ -77,6 +80,9 @@ export class KtvRoom {
 
   @Column({ type: 'varchar', length: 16 })
   status: string;
+
+  @Column({ type: 'int', unsigned: true, default: 0 })
+  sortOrder: number;
 
   @CreateDateColumn({ type: 'datetime' })
   createdAt: string;
