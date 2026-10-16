@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { IsIn, IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
-import { HotelBedType, HotelRoomStatus, ModuleCode, PermissionCode, RecordStatus } from '../common/constants';
+import { HotelBedType, HotelRoomStatus, ModuleCode, PermissionCode, RecordStatus, ShopImageLimit } from '../common/constants';
 import { PageQueryDto } from '../common/dto/page-query.dto';
 import { CurrentAccount } from '../common/decorators/current-account.decorator';
 import { RequireModule, RequirePermission, RequiresShop } from '../common/decorators/auth.decorators';
@@ -119,6 +120,26 @@ export class HotelAdminController {
   @RequirePermission(PermissionCode.HOTEL_ROOM_TYPE_SAVE)
   createRoomType(@Body() saveHotelRoomTypeDto: SaveHotelRoomTypeDto) {
     return this.hotelService.createRoomType(saveHotelRoomTypeDto);
+  }
+
+  /**
+   * 给当前门店的房型上传一张图片。
+   */
+  @Post('room-types/:roomTypeId/images')
+  @RequirePermission(PermissionCode.HOTEL_ROOM_TYPE_SAVE)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: ShopImageLimit.MAX_BYTES } }))
+  addRoomTypeImage(@Param('roomTypeId') roomTypeId: string, @UploadedFile() file: Express.Multer.File) {
+    return this.hotelService.addRoomTypeImage(roomTypeId, file);
+  }
+
+  /**
+   * 删除当前门店房型的一张图片。
+   */
+  @Delete('room-types/:roomTypeId/images/:imageId')
+  @RequirePermission(PermissionCode.HOTEL_ROOM_TYPE_SAVE)
+  async removeRoomTypeImage(@Param('roomTypeId') roomTypeId: string, @Param('imageId') imageId: string) {
+    await this.hotelService.removeRoomTypeImage(roomTypeId, imageId);
+    return null;
   }
 
   /**

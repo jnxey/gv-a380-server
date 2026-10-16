@@ -1,7 +1,8 @@
-import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Min } from 'class-validator';
-import { ModuleCode, PermissionCode, RecordStatus } from '../common/constants';
+import { ModuleCode, PermissionCode, RecordStatus, ShopImageLimit } from '../common/constants';
 import { PageQueryDto } from '../common/dto/page-query.dto';
 import { CurrentAccount } from '../common/decorators/current-account.decorator';
 import { RequireModule, RequirePermission, RequiresShop } from '../common/decorators/auth.decorators';
@@ -15,6 +16,9 @@ export class SaveKtvRoomTypeDto {
   @IsString()
   @IsNotEmpty()
   typeName: string;
+
+  @IsNotEmpty()
+  hourlyPrice: string | number;
 
   @IsIn(Object.values(RecordStatus))
   status: string;
@@ -116,6 +120,26 @@ export class KtvAdminController {
   @RequirePermission(PermissionCode.KTV_ROOM_TYPE_SAVE)
   createRoomType(@Body() saveKtvRoomTypeDto: SaveKtvRoomTypeDto) {
     return this.ktvService.createRoomType(saveKtvRoomTypeDto);
+  }
+
+  /**
+   * 给当前门店的包厢类型上传一张图片。
+   */
+  @Post('room-types/:roomTypeId/images')
+  @RequirePermission(PermissionCode.KTV_ROOM_TYPE_SAVE)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: ShopImageLimit.MAX_BYTES } }))
+  addRoomTypeImage(@Param('roomTypeId') roomTypeId: string, @UploadedFile() file: Express.Multer.File) {
+    return this.ktvService.addRoomTypeImage(roomTypeId, file);
+  }
+
+  /**
+   * 删除当前门店包厢类型的一张图片。
+   */
+  @Delete('room-types/:roomTypeId/images/:imageId')
+  @RequirePermission(PermissionCode.KTV_ROOM_TYPE_SAVE)
+  async removeRoomTypeImage(@Param('roomTypeId') roomTypeId: string, @Param('imageId') imageId: string) {
+    await this.ktvService.removeRoomTypeImage(roomTypeId, imageId);
+    return null;
   }
 
   /**

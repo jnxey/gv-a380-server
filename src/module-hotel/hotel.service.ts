@@ -1,3 +1,6 @@
+import { randomUUID } from 'crypto';
+import { mkdir, unlink, writeFile } from 'fs/promises';
+import { join } from 'path';
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import Decimal from 'decimal.js';
@@ -11,6 +14,8 @@ import {
   HotelStayStatus,
   PageSetting,
   RecordStatus,
+  ShopImageLimit,
+  ShopImageMime,
   ShopType,
   NumberBoundary,
 } from '../common/constants';
@@ -34,7 +39,7 @@ import { MemberBalanceService } from '../core/member/member-balance.service';
 import { MemberQueryService } from '../core/member/member-query.service';
 import { NotifyService } from '../core/notify/notify.service';
 import { ShopService } from '../core/shop/shop.service';
-import { HotelBookingOrder, HotelRoom, HotelRoomType, HotelStayRecord } from './hotel.entities';
+import { HotelBookingOrder, HotelRoom, HotelRoomType, HotelRoomTypeImage, HotelStayRecord } from './hotel.entities';
 
 /**
  * 小程序创建酒店预订的入参。
@@ -54,6 +59,36 @@ export interface SaveHotelRoomTypeCommand {
   bedType: string;
   price: string | number;
   status: string;
+}
+
+/**
+ * 前端使用的一张房型图片。
+ */
+export interface HotelRoomTypeImageView {
+  imageId: string;
+  imageUrl: string;
+}
+
+/**
+ * 上传文件里服务需要的字段。
+ */
+export interface HotelRoomTypeImageFile {
+  buffer: Buffer;
+  mimetype: string;
+  size: number;
+}
+
+/**
+ * 带图片列表的房型。
+ */
+export interface HotelRoomTypeView {
+  id: string;
+  shopId: string;
+  typeName: string;
+  bedType: string;
+  price: string;
+  status: string;
+  imageList: HotelRoomTypeImageView[];
 }
 
 /**
@@ -98,6 +133,8 @@ export class HotelService {
     private readonly dataSource: DataSource,
     @InjectRepository(HotelRoomType)
     private readonly hotelRoomTypeRepository: Repository<HotelRoomType>,
+    @InjectRepository(HotelRoomTypeImage)
+    private readonly hotelRoomTypeImageRepository: Repository<HotelRoomTypeImage>,
     @InjectRepository(HotelRoom)
     private readonly hotelRoomRepository: Repository<HotelRoom>,
     @InjectRepository(HotelBookingOrder)
@@ -113,13 +150,14 @@ export class HotelService {
   /**
    * 后台分页查询当前门店房型。
    */
-  async pageRoomTypes(pageValue: unknown, pageSizeValue: unknown): Promise<PageResult<HotelRoomType>> {
+  async pageRoomTypes(pageValue: unknown, pageSizeValue: unknown): Promise<PageResult<HotelRoomTypeView>> {
     const pageResult = resolvePage(pageValue, pageSizeValue);
-    const [list, total] = await this.hotelRoomTypeRepository.findAndCount({
+    const [roomTypeList, total] = await this.hotelRoomTypeRepository.findAndCount({
       order: { id: 'DESC' },
       skip: pageResult.skip,
       take: pageResult.pageSize,
     });
+    const list = await this.toRoomTypeViewList(roomTypeList);
     return { list, total, page: pageResult.page, pageSize: pageResult.pageSize };
   }
 
@@ -137,25 +175,80 @@ export class HotelService {
   /**
    * 新建当前门店房型。
    */
-  async createRoomType(command: SaveHotelRoomTypeCommand): Promise<HotelRoomType> {
+  async createRoomType(command: SaveHotelRoomTypeCommand): Promise<HotelRoomTypeView> {
     this.assertRoomTypeCommand(command);
     const hotelRoomType = new HotelRoomType();
     hotelRoomType.shopId = this.requireCurrentShopId();
     this.fillRoomType(hotelRoomType, command);
-    return this.hotelRoomTypeRepository.save(hotelRoomType);
+    const savedRoomType = await this.hotelRoomTypeRepository.save(hotelRoomType);
+    return this.toRoomTypeView(savedRoomType, []);
   }
 
   /**
    * 修改当前门店房型。
    */
-  async updateRoomType(roomTypeId: string, command: SaveHotelRoomTypeCommand): Promise<HotelRoomType> {
+  async updateRoomType(roomTypeId: string, command: SaveHotelRoomTypeCommand): Promise<HotelRoomTypeView> {
     this.assertRoomTypeCommand(command);
     const hotelRoomType = await this.hotelRoomTypeRepository.findOne({ where: { id: roomTypeId } });
     if (isEmpty(hotelRoomType)) {
       throw new BusinessException('房型不存在');
     }
     this.fillRoomType(hotelRoomType, command);
-    return this.hotelRoomTypeRepository.save(hotelRoomType);
+    const savedRoomType = await this.hotelRoomTypeRepository.save(hotelRoomType);
+    const viewList = await this.toRoomTypeViewList([savedRoomType]);
+    return viewList[0];
+  }
+
+  /**
+   * 给当前门店的房型追加一张图片。
+   */
+  async addRoomTypeImage(roomTypeId: string, file: HotelRoomTypeImageFile): Promise<HotelRoomTypeImageView> {
+    const hotelRoomType = await this.requireRoomType(roomTypeId);
+    if (isEmpty(file) || isEmpty(file.buffer) || file.buffer.length === 0) {
+      throw new BusinessException('请选择图片');
+    }
+    const extension = this.resolveImageExtension(file.mimetype);
+    if (file.size > ShopImageLimit.MAX_BYTES) {
+      throw new BusinessException('图片不能超过5MB');
+    }
+    const roomTypeIdValue = toIdentifier(hotelRoomType.id);
+    const imageCount = await this.hotelRoomTypeImageRepository.count({ where: { roomTypeId: roomTypeIdValue } });
+    if (imageCount >= ShopImageLimit.MAX_COUNT) {
+      throw new BusinessException('房型图片最多6张');
+    }
+    const fileName = `${randomUUID()}${extension}`;
+    const directoryPath = join(process.cwd(), 'uploads', 'hotel-room-type', roomTypeIdValue);
+    await mkdir(directoryPath, { recursive: true });
+    await writeFile(join(directoryPath, fileName), file.buffer);
+    const roomTypeImage = new HotelRoomTypeImage();
+    roomTypeImage.roomTypeId = roomTypeIdValue;
+    roomTypeImage.imageUrl = `/uploads/hotel-room-type/${roomTypeIdValue}/${fileName}`;
+    roomTypeImage.sortOrder = imageCount;
+    const savedImage = await this.hotelRoomTypeImageRepository.save(roomTypeImage);
+    return this.toImageView(savedImage);
+  }
+
+  /**
+   * 删除当前门店房型的一张图片，并删掉磁盘文件。
+   */
+  async removeRoomTypeImage(roomTypeId: string, imageId: string): Promise<void> {
+    const hotelRoomType = await this.requireRoomType(roomTypeId);
+    const roomTypeIdValue = toIdentifier(hotelRoomType.id);
+    const roomTypeImage = await this.hotelRoomTypeImageRepository.findOne({ where: { id: imageId, roomTypeId: roomTypeIdValue } });
+    if (isEmpty(roomTypeImage)) {
+      throw new BusinessException('房型图片不存在');
+    }
+    const fileName = roomTypeImage.imageUrl.slice(roomTypeImage.imageUrl.lastIndexOf('/') + 1);
+    const filePath = join(process.cwd(), 'uploads', 'hotel-room-type', roomTypeIdValue, fileName);
+    try {
+      await unlink(filePath);
+    } catch (error) {
+      const errorCode = (error as { code?: string }).code;
+      if (errorCode !== 'ENOENT') {
+        throw error;
+      }
+    }
+    await this.hotelRoomTypeImageRepository.delete({ id: roomTypeImage.id });
   }
 
   /**
@@ -496,6 +589,65 @@ export class HotelService {
     hotelRoomType.bedType = command.bedType;
     hotelRoomType.price = toMoneyString(command.price);
     hotelRoomType.status = command.status;
+  }
+
+  /**
+   * 按图片类型得到后缀。不支持的类型直接拒绝。
+   */
+  private resolveImageExtension(mimetype: string): string {
+    if (mimetype === ShopImageMime.JPEG) {
+      return '.jpg';
+    }
+    if (mimetype === ShopImageMime.PNG) {
+      return '.png';
+    }
+    if (mimetype === ShopImageMime.WEBP) {
+      return '.webp';
+    }
+    throw new BusinessException('只支持 jpg、png、webp');
+  }
+
+  /**
+   * 转成前端使用的图片字段。
+   */
+  private toImageView(roomTypeImage: HotelRoomTypeImage): HotelRoomTypeImageView {
+    return {
+      imageId: toIdentifier(roomTypeImage.id),
+      imageUrl: roomTypeImage.imageUrl,
+    };
+  }
+
+  /**
+   * 转成带图片列表的房型字段。
+   */
+  private toRoomTypeView(roomType: HotelRoomType, imageList: HotelRoomTypeImageView[]): HotelRoomTypeView {
+    return {
+      id: toIdentifier(roomType.id),
+      shopId: toIdentifier(roomType.shopId),
+      typeName: roomType.typeName,
+      bedType: roomType.bedType,
+      price: roomType.price,
+      status: roomType.status,
+      imageList,
+    };
+  }
+
+  /**
+   * 批量转成带图片列表的房型字段。
+   */
+  private async toRoomTypeViewList(roomTypeList: HotelRoomType[]): Promise<HotelRoomTypeView[]> {
+    const roomTypeIdList = roomTypeList.map((roomType) => toIdentifier(roomType.id));
+    const imageList = roomTypeIdList.length === 0 ? [] : await this.hotelRoomTypeImageRepository.find({
+      where: { roomTypeId: In(roomTypeIdList) },
+      order: { sortOrder: 'ASC', id: 'ASC' },
+    });
+    return roomTypeList.map((roomType) => {
+      const roomTypeId = toIdentifier(roomType.id);
+      const roomTypeImageList = imageList
+        .filter((roomTypeImage) => toIdentifier(roomTypeImage.roomTypeId) === roomTypeId)
+        .map((roomTypeImage) => this.toImageView(roomTypeImage));
+      return this.toRoomTypeView(roomType, roomTypeImageList);
+    });
   }
 
   /**

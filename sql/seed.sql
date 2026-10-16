@@ -120,13 +120,13 @@ INSERT INTO sys_user_shop (id, user_id, shop_id) VALUES
 INSERT INTO member_account (id, member_no, member_name, mobile, balance, points, status, shop_id) VALUES
 (1, 'M3800001', '测试会员', '13800000000', 1000.00, 0, 'ENABLED', 1);
 
-INSERT INTO ktv_room_type (id, shop_id, type_name, status) VALUES
-(1, 1, '小包', 'ENABLED'),
-(2, 1, '中包', 'ENABLED'),
-(3, 1, '大包', 'ENABLED'),
-(4, 2, '小包', 'ENABLED'),
-(5, 2, '中包', 'ENABLED'),
-(6, 2, '大包', 'ENABLED');
+INSERT INTO ktv_room_type (id, shop_id, type_name, hourly_price, status) VALUES
+(1, 1, '小包', 200.00, 'ENABLED'),
+(2, 1, '中包', 400.00, 'ENABLED'),
+(3, 1, '大包', 600.00, 'ENABLED'),
+(4, 2, '小包', 200.00, 'ENABLED'),
+(5, 2, '中包', 400.00, 'ENABLED'),
+(6, 2, '大包', 600.00, 'ENABLED');
 
 INSERT INTO ktv_room (id, shop_id, room_no, room_name, room_type_id, capacity, price, status) VALUES
 (1, 1, 'A01', 'KTV01小包', 1, 4, 200.00, 'ENABLED'),

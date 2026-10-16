@@ -1,3 +1,6 @@
+import { randomUUID } from 'crypto';
+import { mkdir, unlink, writeFile } from 'fs/promises';
+import { join } from 'path';
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, FindOptionsWhere, In, Repository } from 'typeorm';
@@ -10,6 +13,8 @@ import {
   KtvOrderStatus,
   PageSetting,
   RecordStatus,
+  ShopImageLimit,
+  ShopImageMime,
   ShopType,
   VerifyCodeRule,
   NumberBoundary,
@@ -22,7 +27,7 @@ import { MemberBalanceService } from '../core/member/member-balance.service';
 import { MemberQueryService } from '../core/member/member-query.service';
 import { NotifyService } from '../core/notify/notify.service';
 import { ShopService } from '../core/shop/shop.service';
-import { KtvBookingOrder, KtvConsumeOrder, KtvRoom, KtvRoomType } from './ktv.entities';
+import { KtvBookingOrder, KtvConsumeOrder, KtvRoom, KtvRoomType, KtvRoomTypeImage } from './ktv.entities';
 
 /**
  * 小程序创建 KTV 预订的入参。门店和包厢都会在服务端再次核对归属。
@@ -40,7 +45,37 @@ export interface CreateKtvBookingCommand {
  */
 export interface SaveKtvRoomTypeCommand {
   typeName: string;
+  hourlyPrice: string | number;
   status: string;
+}
+
+/**
+ * 前端使用的一张包厢类型图片。
+ */
+export interface KtvRoomTypeImageView {
+  imageId: string;
+  imageUrl: string;
+}
+
+/**
+ * 上传文件里服务需要的字段。
+ */
+export interface KtvRoomTypeImageFile {
+  buffer: Buffer;
+  mimetype: string;
+  size: number;
+}
+
+/**
+ * 带图片列表的包厢类型。
+ */
+export interface KtvRoomTypeView {
+  id: string;
+  shopId: string;
+  typeName: string;
+  hourlyPrice: string;
+  status: string;
+  imageList: KtvRoomTypeImageView[];
 }
 
 /**
@@ -87,6 +122,8 @@ export class KtvService {
     private readonly dataSource: DataSource,
     @InjectRepository(KtvRoomType)
     private readonly ktvRoomTypeRepository: Repository<KtvRoomType>,
+    @InjectRepository(KtvRoomTypeImage)
+    private readonly ktvRoomTypeImageRepository: Repository<KtvRoomTypeImage>,
     @InjectRepository(KtvRoom)
     private readonly ktvRoomRepository: Repository<KtvRoom>,
     @InjectRepository(KtvBookingOrder)
@@ -100,38 +137,94 @@ export class KtvService {
   /**
    * 后台分页查询当前门店包厢类型。
    */
-  async pageRoomTypes(pageValue: unknown, pageSizeValue: unknown): Promise<PageResult<KtvRoomType>> {
+  async pageRoomTypes(pageValue: unknown, pageSizeValue: unknown): Promise<PageResult<KtvRoomTypeView>> {
     const pageResult = resolvePage(pageValue, pageSizeValue);
-    const [list, total] = await this.ktvRoomTypeRepository.findAndCount({
+    const [roomTypeList, total] = await this.ktvRoomTypeRepository.findAndCount({
       order: { id: 'DESC' },
       skip: pageResult.skip,
       take: pageResult.pageSize,
     });
+    const list = await this.toRoomTypeViewList(roomTypeList);
     return { list, total, page: pageResult.page, pageSize: pageResult.pageSize };
   }
 
   /**
    * 新建当前门店包厢类型。
    */
-  async createRoomType(command: SaveKtvRoomTypeCommand): Promise<KtvRoomType> {
+  async createRoomType(command: SaveKtvRoomTypeCommand): Promise<KtvRoomTypeView> {
     this.assertRoomTypeCommand(command);
     const ktvRoomType = new KtvRoomType();
     ktvRoomType.shopId = this.requireCurrentShopId();
     this.fillRoomType(ktvRoomType, command);
-    return this.ktvRoomTypeRepository.save(ktvRoomType);
+    const savedRoomType = await this.ktvRoomTypeRepository.save(ktvRoomType);
+    return this.toRoomTypeView(savedRoomType, []);
   }
 
   /**
    * 修改当前门店包厢类型。
    */
-  async updateRoomType(roomTypeId: string, command: SaveKtvRoomTypeCommand): Promise<KtvRoomType> {
+  async updateRoomType(roomTypeId: string, command: SaveKtvRoomTypeCommand): Promise<KtvRoomTypeView> {
     this.assertRoomTypeCommand(command);
     const ktvRoomType = await this.ktvRoomTypeRepository.findOne({ where: { id: roomTypeId } });
     if (isEmpty(ktvRoomType)) {
       throw new BusinessException('包厢类型不存在');
     }
     this.fillRoomType(ktvRoomType, command);
-    return this.ktvRoomTypeRepository.save(ktvRoomType);
+    const savedRoomType = await this.ktvRoomTypeRepository.save(ktvRoomType);
+    const viewList = await this.toRoomTypeViewList([savedRoomType]);
+    return viewList[0];
+  }
+
+  /**
+   * 给当前门店的包厢类型追加一张图片。
+   */
+  async addRoomTypeImage(roomTypeId: string, file: KtvRoomTypeImageFile): Promise<KtvRoomTypeImageView> {
+    const ktvRoomType = await this.requireRoomType(roomTypeId);
+    if (isEmpty(file) || isEmpty(file.buffer) || file.buffer.length === 0) {
+      throw new BusinessException('请选择图片');
+    }
+    const extension = this.resolveImageExtension(file.mimetype);
+    if (file.size > ShopImageLimit.MAX_BYTES) {
+      throw new BusinessException('图片不能超过5MB');
+    }
+    const roomTypeIdValue = toIdentifier(ktvRoomType.id);
+    const imageCount = await this.ktvRoomTypeImageRepository.count({ where: { roomTypeId: roomTypeIdValue } });
+    if (imageCount >= ShopImageLimit.MAX_COUNT) {
+      throw new BusinessException('包厢类型图片最多6张');
+    }
+    const fileName = `${randomUUID()}${extension}`;
+    const directoryPath = join(process.cwd(), 'uploads', 'ktv-room-type', roomTypeIdValue);
+    await mkdir(directoryPath, { recursive: true });
+    await writeFile(join(directoryPath, fileName), file.buffer);
+    const roomTypeImage = new KtvRoomTypeImage();
+    roomTypeImage.roomTypeId = roomTypeIdValue;
+    roomTypeImage.imageUrl = `/uploads/ktv-room-type/${roomTypeIdValue}/${fileName}`;
+    roomTypeImage.sortOrder = imageCount;
+    const savedImage = await this.ktvRoomTypeImageRepository.save(roomTypeImage);
+    return this.toImageView(savedImage);
+  }
+
+  /**
+   * 删除当前门店包厢类型的一张图片，并删掉磁盘文件。
+   */
+  async removeRoomTypeImage(roomTypeId: string, imageId: string): Promise<void> {
+    const ktvRoomType = await this.requireRoomType(roomTypeId);
+    const roomTypeIdValue = toIdentifier(ktvRoomType.id);
+    const roomTypeImage = await this.ktvRoomTypeImageRepository.findOne({ where: { id: imageId, roomTypeId: roomTypeIdValue } });
+    if (isEmpty(roomTypeImage)) {
+      throw new BusinessException('包厢类型图片不存在');
+    }
+    const fileName = roomTypeImage.imageUrl.slice(roomTypeImage.imageUrl.lastIndexOf('/') + 1);
+    const filePath = join(process.cwd(), 'uploads', 'ktv-room-type', roomTypeIdValue, fileName);
+    try {
+      await unlink(filePath);
+    } catch (error) {
+      const errorCode = (error as { code?: string }).code;
+      if (errorCode !== 'ENOENT') {
+        throw error;
+      }
+    }
+    await this.ktvRoomTypeImageRepository.delete({ id: roomTypeImage.id });
   }
 
   /**
@@ -398,6 +491,9 @@ export class KtvService {
     if (isEmpty(command.typeName)) {
       throw new BusinessException('包厢类型名称不能为空');
     }
+    if (!isPositiveMoney(command.hourlyPrice)) {
+      throw new BusinessException('每小时价格必须大于0');
+    }
     if (!isOneOf(command.status, Object.values(RecordStatus))) {
       throw new BusinessException('包厢类型状态不正确');
     }
@@ -423,7 +519,66 @@ export class KtvService {
    */
   private fillRoomType(ktvRoomType: KtvRoomType, command: SaveKtvRoomTypeCommand): void {
     ktvRoomType.typeName = command.typeName;
+    ktvRoomType.hourlyPrice = toMoneyString(command.hourlyPrice);
     ktvRoomType.status = command.status;
+  }
+
+  /**
+   * 按图片类型得到后缀。不支持的类型直接拒绝。
+   */
+  private resolveImageExtension(mimetype: string): string {
+    if (mimetype === ShopImageMime.JPEG) {
+      return '.jpg';
+    }
+    if (mimetype === ShopImageMime.PNG) {
+      return '.png';
+    }
+    if (mimetype === ShopImageMime.WEBP) {
+      return '.webp';
+    }
+    throw new BusinessException('只支持 jpg、png、webp');
+  }
+
+  /**
+   * 转成前端使用的图片字段。
+   */
+  private toImageView(roomTypeImage: KtvRoomTypeImage): KtvRoomTypeImageView {
+    return {
+      imageId: toIdentifier(roomTypeImage.id),
+      imageUrl: roomTypeImage.imageUrl,
+    };
+  }
+
+  /**
+   * 转成带图片列表的包厢类型字段。
+   */
+  private toRoomTypeView(roomType: KtvRoomType, imageList: KtvRoomTypeImageView[]): KtvRoomTypeView {
+    return {
+      id: toIdentifier(roomType.id),
+      shopId: toIdentifier(roomType.shopId),
+      typeName: roomType.typeName,
+      hourlyPrice: roomType.hourlyPrice,
+      status: roomType.status,
+      imageList,
+    };
+  }
+
+  /**
+   * 批量转成带图片列表的包厢类型字段。
+   */
+  private async toRoomTypeViewList(roomTypeList: KtvRoomType[]): Promise<KtvRoomTypeView[]> {
+    const roomTypeIdList = roomTypeList.map((roomType) => toIdentifier(roomType.id));
+    const imageList = roomTypeIdList.length === 0 ? [] : await this.ktvRoomTypeImageRepository.find({
+      where: { roomTypeId: In(roomTypeIdList) },
+      order: { sortOrder: 'ASC', id: 'ASC' },
+    });
+    return roomTypeList.map((roomType) => {
+      const roomTypeId = toIdentifier(roomType.id);
+      const roomTypeImageList = imageList
+        .filter((roomTypeImage) => toIdentifier(roomTypeImage.roomTypeId) === roomTypeId)
+        .map((roomTypeImage) => this.toImageView(roomTypeImage));
+      return this.toRoomTypeView(roomType, roomTypeImageList);
+    });
   }
 
   /**

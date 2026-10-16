@@ -2,7 +2,7 @@ import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateCol
 import { decimalTransformer } from '../common/tools/column';
 
 /**
- * KTV 包厢类型。人数和价格仍在包厢上。
+ * KTV 包厢类型。每小时价格在类型上，包厢仍保留自己的预订价格。
  */
 @Entity('ktv_room_type')
 export class KtvRoomType {
@@ -15,6 +15,9 @@ export class KtvRoomType {
   @Column({ type: 'varchar', length: 64 })
   typeName: string;
 
+  @Column({ type: 'decimal', precision: 12, scale: 2, transformer: decimalTransformer })
+  hourlyPrice: string;
+
   @Column({ type: 'varchar', length: 16 })
   status: string;
 
@@ -23,6 +26,27 @@ export class KtvRoomType {
 
   @UpdateDateColumn({ type: 'datetime' })
   updatedAt: string;
+}
+
+/**
+ * KTV 包厢类型图片。一个类型最多 6 张，张数由服务校验。
+ */
+@Entity('ktv_room_type_image')
+export class KtvRoomTypeImage {
+  @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
+  id: string;
+
+  @Column({ type: 'bigint', unsigned: true })
+  roomTypeId: string;
+
+  @Column({ type: 'varchar', length: 255 })
+  imageUrl: string;
+
+  @Column({ type: 'int', unsigned: true, default: 0 })
+  sortOrder: number;
+
+  @CreateDateColumn({ type: 'datetime' })
+  createdAt: string;
 }
 
 /**

@@ -32,6 +32,27 @@ export class HotelRoomType {
 }
 
 /**
+ * 酒店房型图片。一个房型最多 6 张，张数由服务校验。
+ */
+@Entity('hotel_room_type_image')
+export class HotelRoomTypeImage {
+  @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
+  id: string;
+
+  @Column({ type: 'bigint', unsigned: true })
+  roomTypeId: string;
+
+  @Column({ type: 'varchar', length: 255 })
+  imageUrl: string;
+
+  @Column({ type: 'int', unsigned: true, default: 0 })
+  sortOrder: number;
+
+  @CreateDateColumn({ type: 'datetime' })
+  createdAt: string;
+}
+
+/**
  * 酒店房间。
  */
 @Entity('hotel_room')

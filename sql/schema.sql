@@ -221,6 +221,7 @@ CREATE TABLE ktv_room_type (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
   shop_id BIGINT UNSIGNED NOT NULL COMMENT '门店ID',
   type_name VARCHAR(64) NOT NULL COMMENT '包厢类型名称',
+  hourly_price DECIMAL(12,2) NOT NULL COMMENT '每小时价格',
   status VARCHAR(16) NOT NULL COMMENT '状态：ENABLED、DISABLED',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -228,6 +229,17 @@ CREATE TABLE ktv_room_type (
   KEY idx_ktv_room_type_shop_status (shop_id, status),
   CONSTRAINT fk_ktv_room_type_shop FOREIGN KEY (shop_id) REFERENCES shop (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='KTV包厢类型';
+
+CREATE TABLE ktv_room_type_image (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  room_type_id BIGINT UNSIGNED NOT NULL COMMENT '包厢类型ID',
+  image_url VARCHAR(255) NOT NULL COMMENT '图片访问路径',
+  sort_order INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '排序，从0开始',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (id),
+  KEY idx_ktv_room_type_image_type_id (room_type_id, sort_order),
+  CONSTRAINT fk_ktv_room_type_image_type FOREIGN KEY (room_type_id) REFERENCES ktv_room_type (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='KTV包厢类型图片';
 
 CREATE TABLE ktv_room (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
@@ -309,6 +321,17 @@ CREATE TABLE hotel_room_type (
   KEY idx_hotel_room_type_shop_status (shop_id, status),
   CONSTRAINT fk_hotel_room_type_shop FOREIGN KEY (shop_id) REFERENCES shop (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='酒店房型';
+
+CREATE TABLE hotel_room_type_image (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  room_type_id BIGINT UNSIGNED NOT NULL COMMENT '房型ID',
+  image_url VARCHAR(255) NOT NULL COMMENT '图片访问路径',
+  sort_order INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '排序，从0开始',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (id),
+  KEY idx_hotel_room_type_image_type_id (room_type_id, sort_order),
+  CONSTRAINT fk_hotel_room_type_image_type FOREIGN KEY (room_type_id) REFERENCES hotel_room_type (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='酒店房型图片';
 
 CREATE TABLE hotel_room (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
