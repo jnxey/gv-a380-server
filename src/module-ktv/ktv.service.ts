@@ -8,7 +8,6 @@ import {
   KtvBookingCancelableStatusList,
   KtvConsumeStatus,
   KtvOrderStatus,
-  KtvRoomType,
   PageSetting,
   RecordStatus,
   ShopType,
@@ -23,7 +22,7 @@ import { MemberBalanceService } from '../core/member/member-balance.service';
 import { MemberQueryService } from '../core/member/member-query.service';
 import { NotifyService } from '../core/notify/notify.service';
 import { ShopService } from '../core/shop/shop.service';
-import { KtvBookingOrder, KtvConsumeOrder, KtvRoom } from './ktv.entities';
+import { KtvBookingOrder, KtvConsumeOrder, KtvRoom, KtvRoomType } from './ktv.entities';
 
 /**
  * 小程序创建 KTV 预订的入参。门店和包厢都会在服务端再次核对归属。
@@ -37,12 +36,20 @@ export interface CreateKtvBookingCommand {
 }
 
 /**
+ * 后台保存包厢类型的入参。门店取当前上下文。
+ */
+export interface SaveKtvRoomTypeCommand {
+  typeName: string;
+  status: string;
+}
+
+/**
  * 后台保存包厢的入参。门店取当前上下文，不使用调用方传入的门店。
  */
 export interface SaveKtvRoomCommand {
   roomNo: string;
   roomName: string;
-  roomType: string;
+  roomTypeId: string;
   capacity: number;
   price: string | number;
   status: string;
@@ -78,6 +85,8 @@ export class KtvService {
   constructor(
     @InjectDataSource()
     private readonly dataSource: DataSource,
+    @InjectRepository(KtvRoomType)
+    private readonly ktvRoomTypeRepository: Repository<KtvRoomType>,
     @InjectRepository(KtvRoom)
     private readonly ktvRoomRepository: Repository<KtvRoom>,
     @InjectRepository(KtvBookingOrder)
@@ -87,6 +96,43 @@ export class KtvService {
     private readonly memberQueryService: MemberQueryService,
     private readonly notifyService: NotifyService,
   ) {}
+
+  /**
+   * 后台分页查询当前门店包厢类型。
+   */
+  async pageRoomTypes(pageValue: unknown, pageSizeValue: unknown): Promise<PageResult<KtvRoomType>> {
+    const pageResult = resolvePage(pageValue, pageSizeValue);
+    const [list, total] = await this.ktvRoomTypeRepository.findAndCount({
+      order: { id: 'DESC' },
+      skip: pageResult.skip,
+      take: pageResult.pageSize,
+    });
+    return { list, total, page: pageResult.page, pageSize: pageResult.pageSize };
+  }
+
+  /**
+   * 新建当前门店包厢类型。
+   */
+  async createRoomType(command: SaveKtvRoomTypeCommand): Promise<KtvRoomType> {
+    this.assertRoomTypeCommand(command);
+    const ktvRoomType = new KtvRoomType();
+    ktvRoomType.shopId = this.requireCurrentShopId();
+    this.fillRoomType(ktvRoomType, command);
+    return this.ktvRoomTypeRepository.save(ktvRoomType);
+  }
+
+  /**
+   * 修改当前门店包厢类型。
+   */
+  async updateRoomType(roomTypeId: string, command: SaveKtvRoomTypeCommand): Promise<KtvRoomType> {
+    this.assertRoomTypeCommand(command);
+    const ktvRoomType = await this.ktvRoomTypeRepository.findOne({ where: { id: roomTypeId } });
+    if (isEmpty(ktvRoomType)) {
+      throw new BusinessException('包厢类型不存在');
+    }
+    this.fillRoomType(ktvRoomType, command);
+    return this.ktvRoomTypeRepository.save(ktvRoomType);
+  }
 
   /**
    * 查询当前门店全部包厢。
@@ -115,6 +161,7 @@ export class KtvService {
   async createRoom(command: SaveKtvRoomCommand): Promise<KtvRoom> {
     this.assertRoomCommand(command);
     const currentShopId = this.requireCurrentShopId();
+    await this.requireRoomType(command.roomTypeId);
     const ktvRoom = new KtvRoom();
     ktvRoom.shopId = currentShopId;
     this.fillRoom(ktvRoom, command);
@@ -134,6 +181,7 @@ export class KtvService {
     if (isEmpty(ktvRoom)) {
       throw new BusinessException('包厢不存在');
     }
+    await this.requireRoomType(command.roomTypeId);
     this.fillRoom(ktvRoom, command);
     try {
       return await this.ktvRoomRepository.save(ktvRoom);
@@ -344,12 +392,21 @@ export class KtvService {
   }
 
   /**
+   * 校验包厢类型参数。
+   */
+  private assertRoomTypeCommand(command: SaveKtvRoomTypeCommand): void {
+    if (isEmpty(command.typeName)) {
+      throw new BusinessException('包厢类型名称不能为空');
+    }
+    if (!isOneOf(command.status, Object.values(RecordStatus))) {
+      throw new BusinessException('包厢类型状态不正确');
+    }
+  }
+
+  /**
    * 校验包厢保存参数。
    */
   private assertRoomCommand(command: SaveKtvRoomCommand): void {
-    if (!isOneOf(command.roomType, Object.values(KtvRoomType))) {
-      throw new BusinessException('包厢类型不正确');
-    }
     if (!isOneOf(command.status, Object.values(RecordStatus))) {
       throw new BusinessException('包厢状态不正确');
     }
@@ -362,12 +419,31 @@ export class KtvService {
   }
 
   /**
+   * 把保存参数写进包厢类型。
+   */
+  private fillRoomType(ktvRoomType: KtvRoomType, command: SaveKtvRoomTypeCommand): void {
+    ktvRoomType.typeName = command.typeName;
+    ktvRoomType.status = command.status;
+  }
+
+  /**
+   * 确认包厢类型属于当前门店。数据权限会滤掉其他门店类型。
+   */
+  private async requireRoomType(roomTypeId: string): Promise<KtvRoomType> {
+    const ktvRoomType = await this.ktvRoomTypeRepository.findOne({ where: { id: roomTypeId } });
+    if (isEmpty(ktvRoomType)) {
+      throw new BusinessException('包厢类型不存在');
+    }
+    return ktvRoomType;
+  }
+
+  /**
    * 把保存参数写进包厢实体。
    */
   private fillRoom(ktvRoom: KtvRoom, command: SaveKtvRoomCommand): void {
     ktvRoom.roomNo = command.roomNo;
     ktvRoom.roomName = command.roomName;
-    ktvRoom.roomType = command.roomType;
+    ktvRoom.roomTypeId = command.roomTypeId;
     ktvRoom.capacity = Number(command.capacity);
     ktvRoom.price = toMoneyString(command.price);
     ktvRoom.status = command.status;

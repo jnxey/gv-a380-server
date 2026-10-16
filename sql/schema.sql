@@ -217,12 +217,24 @@ CREATE TABLE notify_message (
 -- ----------------------------
 -- module-ktv
 -- ----------------------------
+CREATE TABLE ktv_room_type (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  shop_id BIGINT UNSIGNED NOT NULL COMMENT '门店ID',
+  type_name VARCHAR(64) NOT NULL COMMENT '包厢类型名称',
+  status VARCHAR(16) NOT NULL COMMENT '状态：ENABLED、DISABLED',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  KEY idx_ktv_room_type_shop_status (shop_id, status),
+  CONSTRAINT fk_ktv_room_type_shop FOREIGN KEY (shop_id) REFERENCES shop (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='KTV包厢类型';
+
 CREATE TABLE ktv_room (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
   shop_id BIGINT UNSIGNED NOT NULL COMMENT '门店ID',
   room_no VARCHAR(32) NOT NULL COMMENT '包厢编号',
   room_name VARCHAR(64) NOT NULL COMMENT '包厢名称',
-  room_type VARCHAR(32) NOT NULL COMMENT '包厢类型：SMALL、MEDIUM、LARGE',
+  room_type_id BIGINT UNSIGNED NOT NULL COMMENT '包厢类型ID',
   capacity INT NOT NULL COMMENT '容纳人数',
   price DECIMAL(12,2) NOT NULL COMMENT '预订价格',
   status VARCHAR(16) NOT NULL COMMENT '状态：ENABLED、DISABLED',
@@ -231,7 +243,9 @@ CREATE TABLE ktv_room (
   PRIMARY KEY (id),
   UNIQUE KEY uk_ktv_room_shop_room_no (shop_id, room_no),
   KEY idx_ktv_room_shop_status (shop_id, status),
-  CONSTRAINT fk_ktv_room_shop FOREIGN KEY (shop_id) REFERENCES shop (id)
+  KEY idx_ktv_room_type_id (room_type_id),
+  CONSTRAINT fk_ktv_room_shop FOREIGN KEY (shop_id) REFERENCES shop (id),
+  CONSTRAINT fk_ktv_room_type FOREIGN KEY (room_type_id) REFERENCES ktv_room_type (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='KTV包厢';
 
 CREATE TABLE ktv_booking_order (

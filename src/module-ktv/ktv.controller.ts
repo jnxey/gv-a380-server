@@ -1,12 +1,24 @@
 import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Min } from 'class-validator';
-import { KtvRoomType, ModuleCode, PermissionCode, RecordStatus } from '../common/constants';
+import { ModuleCode, PermissionCode, RecordStatus } from '../common/constants';
 import { PageQueryDto } from '../common/dto/page-query.dto';
 import { CurrentAccount } from '../common/decorators/current-account.decorator';
 import { RequireModule, RequirePermission, RequiresShop } from '../common/decorators/auth.decorators';
 import { LoginAccountContext } from '../common/interfaces/login-account-context';
 import { KtvService } from './ktv.service';
+
+/**
+ * 后台保存包厢类型。
+ */
+export class SaveKtvRoomTypeDto {
+  @IsString()
+  @IsNotEmpty()
+  typeName: string;
+
+  @IsIn(Object.values(RecordStatus))
+  status: string;
+}
 
 /**
  * 后台保存包厢。
@@ -20,8 +32,9 @@ export class SaveKtvRoomDto {
   @IsNotEmpty()
   roomName: string;
 
-  @IsIn(Object.values(KtvRoomType))
-  roomType: string;
+  @IsString()
+  @IsNotEmpty()
+  roomTypeId: string;
 
   @Type(() => Number)
   @IsInt()
@@ -86,6 +99,33 @@ export class CreateKtvBookingDto {
 @RequiresShop()
 export class KtvAdminController {
   constructor(private readonly ktvService: KtvService) {}
+
+  /**
+   * 分页查询当前门店包厢类型。
+   */
+  @Get('room-types')
+  @RequirePermission(PermissionCode.KTV_ROOM_TYPE_QUERY)
+  pageRoomTypes(@Query() pageQueryDto: PageQueryDto) {
+    return this.ktvService.pageRoomTypes(pageQueryDto.page, pageQueryDto.pageSize);
+  }
+
+  /**
+   * 新建包厢类型。
+   */
+  @Post('room-types')
+  @RequirePermission(PermissionCode.KTV_ROOM_TYPE_SAVE)
+  createRoomType(@Body() saveKtvRoomTypeDto: SaveKtvRoomTypeDto) {
+    return this.ktvService.createRoomType(saveKtvRoomTypeDto);
+  }
+
+  /**
+   * 修改包厢类型。
+   */
+  @Put('room-types/:roomTypeId')
+  @RequirePermission(PermissionCode.KTV_ROOM_TYPE_SAVE)
+  updateRoomType(@Param('roomTypeId') roomTypeId: string, @Body() saveKtvRoomTypeDto: SaveKtvRoomTypeDto) {
+    return this.ktvService.updateRoomType(roomTypeId, saveKtvRoomTypeDto);
+  }
 
   /**
    * 查询当前门店全部包厢。

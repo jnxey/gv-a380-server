@@ -131,15 +131,6 @@ export const KtvConsumeStatus = {
 } as const;
 
 /**
- * KTV 包厢类型。
- */
-export const KtvRoomType = {
-  SMALL: 'SMALL',
-  MEDIUM: 'MEDIUM',
-  LARGE: 'LARGE',
-} as const;
-
-/**
  * 酒店预订订单状态。
  */
 export const HotelOrderStatus = {
@@ -214,6 +205,8 @@ export const PermissionCode = {
   FINANCE_BILL_QUERY: 'finance:bill:query',
   KTV_SHOP_QUERY: 'ktv:shop:query',
   KTV_SHOP_SAVE: 'ktv:shop:save',
+  KTV_ROOM_TYPE_QUERY: 'ktv:room-type:query',
+  KTV_ROOM_TYPE_SAVE: 'ktv:room-type:save',
   KTV_ROOM_QUERY: 'ktv:room:query',
   KTV_ROOM_SAVE: 'ktv:room:save',
   KTV_ORDER_QUERY: 'ktv:order:query',
@@ -427,6 +420,7 @@ export const MysqlErrorCode = {
  * 参与门店隔离的业务表。member_account、shop、sys_user_shop 不在此列。
  */
 export const ShopScopedTableName = {
+  KTV_ROOM_TYPE: 'ktv_room_type',
   KTV_ROOM: 'ktv_room',
   KTV_BOOKING_ORDER: 'ktv_booking_order',
   KTV_CONSUME_ORDER: 'ktv_consume_order',
@@ -440,6 +434,7 @@ export const ShopScopedTableName = {
 } as const;
 
 export const ShopScopedTableNameList: string[] = [
+  ShopScopedTableName.KTV_ROOM_TYPE,
   ShopScopedTableName.KTV_ROOM,
   ShopScopedTableName.KTV_BOOKING_ORDER,
   ShopScopedTableName.KTV_CONSUME_ORDER,
