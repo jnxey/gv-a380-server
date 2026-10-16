@@ -4,6 +4,7 @@ import { MemberModule } from '../core/member/member.module';
 import { NotifyModule } from '../core/notify/notify.module';
 import { ShopModule } from '../core/shop/shop.module';
 import { HotelAdminController, HotelAppController } from './hotel.controller';
+import { HotelShopAdminController } from './hotel-shop.controller';
 import { HotelBookingOrder, HotelRoom, HotelRoomType, HotelStayRecord } from './hotel.entities';
 import { HotelService } from './hotel.service';
 
@@ -12,7 +13,7 @@ import { HotelService } from './hotel.service';
  */
 @Module({
   imports: [TypeOrmModule.forFeature([HotelRoomType, HotelRoom, HotelBookingOrder, HotelStayRecord]), MemberModule, NotifyModule, ShopModule],
-  controllers: [HotelAdminController, HotelAppController],
+  controllers: [HotelAdminController, HotelAppController, HotelShopAdminController],
   providers: [HotelService],
 })
 export class HotelModule {}

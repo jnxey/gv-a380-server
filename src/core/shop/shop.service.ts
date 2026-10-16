@@ -157,6 +157,60 @@ export class ShopService {
   }
 
   /**
+   * 新建酒店门店，并把创建人绑定到该门店。
+   */
+  async createHotelShop(command: SaveShopCommand): Promise<Shop> {
+    const shop = new Shop();
+    shop.shopCode = command.shopCode;
+    shop.shopName = command.shopName;
+    shop.shopType = ShopType.HOTEL;
+    shop.address = isEmpty(command.address) ? '' : command.address;
+    shop.contactPhone = isEmpty(command.contactPhone) ? '' : command.contactPhone;
+    shop.status = command.status;
+    try {
+      return await this.shopRepository.manager.transaction(async (entityManager) => {
+        const savedShop = await entityManager.getRepository(Shop).save(shop);
+        const sysUserShop = new SysUserShop();
+        sysUserShop.userId = command.operatorId;
+        sysUserShop.shopId = toIdentifier(savedShop.id);
+        await entityManager.getRepository(SysUserShop).save(sysUserShop);
+        return savedShop;
+      });
+    } catch (error) {
+      if (isDuplicateEntryError(error)) {
+        throw new BusinessException('门店编码已存在');
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * 修改已绑定的酒店门店。不能改门店类型，也不能改未绑定的门店。
+   */
+  async updateHotelShop(shopId: string, command: SaveShopCommand): Promise<Shop> {
+    if (!command.boundShopIdList.includes(toIdentifier(shopId))) {
+      throw new BusinessException('无权修改该门店');
+    }
+    const shop = await this.shopRepository.findOne({ where: { id: shopId, shopType: ShopType.HOTEL } });
+    if (isEmpty(shop)) {
+      throw new BusinessException('酒店门店不存在');
+    }
+    shop.shopCode = command.shopCode;
+    shop.shopName = command.shopName;
+    shop.address = isEmpty(command.address) ? '' : command.address;
+    shop.contactPhone = isEmpty(command.contactPhone) ? '' : command.contactPhone;
+    shop.status = command.status;
+    try {
+      return await this.shopRepository.save(shop);
+    } catch (error) {
+      if (isDuplicateEntryError(error)) {
+        throw new BusinessException('门店编码已存在');
+      }
+      throw error;
+    }
+  }
+
+  /**
    * 转成前端使用的门店字段。
    */
   toShopView(shop: Shop): { shopId: string; shopCode: string; shopName: string; shopType: string; address: string; contactPhone: string; status: string } {
