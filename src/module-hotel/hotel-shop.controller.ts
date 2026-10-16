@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
-import { ModuleCode, PermissionCode, RecordStatus, ShopType } from '../common/constants';
+import { ModuleCode, PermissionCode, RecordStatus, ShopImageLimit, ShopType } from '../common/constants';
 import { RequireModule, RequirePermission, RequiresShop } from '../common/decorators/auth.decorators';
 import { CurrentAccount } from '../common/decorators/current-account.decorator';
 import { LoginAccountContext } from '../common/interfaces/login-account-context';
@@ -46,7 +47,7 @@ export class HotelShopAdminController {
   @RequirePermission(PermissionCode.HOTEL_SHOP_QUERY)
   async listShops(@CurrentAccount() loginAccountContext: LoginAccountContext) {
     const shopList = await this.shopService.listBoundShops(loginAccountContext.boundShopIdList, ShopType.HOTEL);
-    return shopList.map((shop) => this.shopService.toShopView(shop));
+    return this.shopService.toShopViewList(shopList);
   }
 
   /**
@@ -64,7 +65,35 @@ export class HotelShopAdminController {
       operatorId: loginAccountContext.accountId,
       boundShopIdList: loginAccountContext.boundShopIdList,
     });
-    return this.shopService.toShopView(shop);
+    return this.shopService.toShopViewWithImages(shop);
+  }
+
+  /**
+   * 给已绑定的酒店门店上传一张图片。
+   */
+  @Post(':shopId/images')
+  @RequirePermission(PermissionCode.HOTEL_SHOP_SAVE)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: ShopImageLimit.MAX_BYTES } }))
+  async addImage(
+    @Param('shopId') shopId: string,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentAccount() loginAccountContext: LoginAccountContext,
+  ) {
+    return this.shopService.addShopImage(shopId, ShopType.HOTEL, loginAccountContext.boundShopIdList, file);
+  }
+
+  /**
+   * 删除已绑定酒店门店的一张图片。
+   */
+  @Delete(':shopId/images/:imageId')
+  @RequirePermission(PermissionCode.HOTEL_SHOP_SAVE)
+  async removeImage(
+    @Param('shopId') shopId: string,
+    @Param('imageId') imageId: string,
+    @CurrentAccount() loginAccountContext: LoginAccountContext,
+  ) {
+    await this.shopService.removeShopImage(shopId, imageId, ShopType.HOTEL, loginAccountContext.boundShopIdList);
+    return null;
   }
 
   /**
@@ -86,6 +115,6 @@ export class HotelShopAdminController {
       operatorId: loginAccountContext.accountId,
       boundShopIdList: loginAccountContext.boundShopIdList,
     });
-    return this.shopService.toShopView(shop);
+    return this.shopService.toShopViewWithImages(shop);
   }
 }

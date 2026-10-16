@@ -13,6 +13,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
    */
   catch(exception: unknown, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<Response>();
+    if (this.isFileTooLarge(exception)) {
+      response.status(HttpStatus.BAD_REQUEST).json({
+        code: ResponseCode.FAIL,
+        message: '图片不能超过5MB',
+        data: null,
+      });
+      return;
+    }
     const statusCode = exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
     const message = this.resolveMessage(exception);
     response.status(statusCode).json({
@@ -20,6 +28,17 @@ export class HttpExceptionFilter implements ExceptionFilter {
       message,
       data: null,
     });
+  }
+
+  /**
+   * multer 在文件超过上限时抛出的不是 HttpException。
+   */
+  private isFileTooLarge(exception: unknown): boolean {
+    if (!isObject(exception)) {
+      return false;
+    }
+    const errorCode = (exception as { code?: string }).code;
+    return errorCode === 'LIMIT_FILE_SIZE';
   }
 
   /**

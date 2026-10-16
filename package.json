@@ -20,6 +20,7 @@
     "class-validator": "^0.14.1",
     "decimal.js": "^10.4.3",
     "ioredis": "^5.4.2",
+    "multer": "^2.4.0",
     "mysql2": "^3.11.5",
     "prettier": "^3.9.10",
     "reflect-metadata": "^0.2.2",
@@ -31,6 +32,7 @@
     "@nestjs/cli": "^10.4.9",
     "@types/bcryptjs": "^2.4.6",
     "@types/express": "^4.17.21",
+    "@types/multer": "^2.3.0",
     "@types/node": "^20.17.10",
     "typescript": "^5.7.2"
   }

@@ -23,6 +23,17 @@ CREATE TABLE shop (
   KEY idx_shop_type_status (shop_type, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='门店主表';
 
+CREATE TABLE shop_image (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  shop_id BIGINT UNSIGNED NOT NULL COMMENT '门店ID',
+  image_url VARCHAR(255) NOT NULL COMMENT '图片访问路径',
+  sort_order INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '排序，从0开始',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (id),
+  KEY idx_shop_image_shop_id (shop_id, sort_order),
+  CONSTRAINT fk_shop_image_shop FOREIGN KEY (shop_id) REFERENCES shop (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='门店图片';
+
 -- ----------------------------
 -- core：后台账号与 RBAC（与会员账号隔离）
 -- ----------------------------

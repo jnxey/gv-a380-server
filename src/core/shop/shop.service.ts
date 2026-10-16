@@ -1,11 +1,32 @@
+import { randomUUID } from 'crypto';
+import { mkdir, unlink, writeFile } from 'fs/promises';
+import { join } from 'path';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, In, Repository } from 'typeorm';
-import { RecordStatus, ShopType } from '../../common/constants';
+import { RecordStatus, ShopImageLimit, ShopImageMime, ShopType } from '../../common/constants';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { isDuplicateEntryError, isEmpty, toIdentifier } from '../../common/tools';
 import { SysUserShop } from '../rbac/sys.entities';
+import { ShopImage } from './shop-image.entity';
 import { Shop } from './shop.entity';
+
+/**
+ * 前端使用的一张门店图片。
+ */
+export interface ShopImageView {
+  imageId: string;
+  imageUrl: string;
+}
+
+/**
+ * 上传文件里服务需要的字段。
+ */
+export interface ShopImageFile {
+  buffer: Buffer;
+  mimetype: string;
+  size: number;
+}
 
 /**
  * 保存门店时的输入。
@@ -30,6 +51,8 @@ export class ShopService {
     private readonly shopRepository: Repository<Shop>,
     @InjectRepository(SysUserShop)
     private readonly sysUserShopRepository: Repository<SysUserShop>,
+    @InjectRepository(ShopImage)
+    private readonly shopImageRepository: Repository<ShopImage>,
   ) {}
 
   /**
@@ -208,6 +231,122 @@ export class ShopService {
       }
       throw error;
     }
+  }
+
+  /**
+   * 给一家已绑定门店追加图片。超过张数、类型或大小时拒绝。
+   */
+  async addShopImage(shopId: string, shopType: string, boundShopIdList: string[], file: ShopImageFile): Promise<ShopImageView> {
+    await this.findWritableShop(shopId, shopType, boundShopIdList);
+    if (isEmpty(file) || isEmpty(file.buffer) || file.buffer.length === 0) {
+      throw new BusinessException('请选择图片');
+    }
+    const extension = this.resolveImageExtension(file.mimetype);
+    if (file.size > ShopImageLimit.MAX_BYTES) {
+      throw new BusinessException('图片不能超过5MB');
+    }
+    const imageCount = await this.shopImageRepository.count({ where: { shopId } });
+    if (imageCount >= ShopImageLimit.MAX_COUNT) {
+      throw new BusinessException('门店图片最多6张');
+    }
+    const fileName = `${randomUUID()}${extension}`;
+    const directoryPath = join(process.cwd(), 'uploads', 'shop', toIdentifier(shopId));
+    await mkdir(directoryPath, { recursive: true });
+    await writeFile(join(directoryPath, fileName), file.buffer);
+    const shopImage = new ShopImage();
+    shopImage.shopId = toIdentifier(shopId);
+    shopImage.imageUrl = `/uploads/shop/${toIdentifier(shopId)}/${fileName}`;
+    shopImage.sortOrder = imageCount;
+    const savedImage = await this.shopImageRepository.save(shopImage);
+    return this.toImageView(savedImage);
+  }
+
+  /**
+   * 删除一张已绑定门店的图片，并删掉磁盘文件。
+   */
+  async removeShopImage(shopId: string, imageId: string, shopType: string, boundShopIdList: string[]): Promise<void> {
+    await this.findWritableShop(shopId, shopType, boundShopIdList);
+    const shopImage = await this.shopImageRepository.findOne({ where: { id: imageId, shopId } });
+    if (isEmpty(shopImage)) {
+      throw new BusinessException('门店图片不存在');
+    }
+    const fileName = shopImage.imageUrl.slice(shopImage.imageUrl.lastIndexOf('/') + 1);
+    const filePath = join(process.cwd(), 'uploads', 'shop', toIdentifier(shopId), fileName);
+    try {
+      await unlink(filePath);
+    } catch (error) {
+      const errorCode = (error as { code?: string }).code;
+      if (errorCode !== 'ENOENT') {
+        throw error;
+      }
+    }
+    await this.shopImageRepository.delete({ id: shopImage.id });
+  }
+
+  /**
+   * 转成带图片列表的门店字段。
+   */
+  async toShopViewWithImages(shop: Shop): Promise<ReturnType<ShopService['toShopView']> & { imageList: ShopImageView[] }> {
+    const viewList = await this.toShopViewList([shop]);
+    return viewList[0];
+  }
+
+  /**
+   * 批量转成带图片列表的门店字段。
+   */
+  async toShopViewList(shopList: Shop[]): Promise<Array<ReturnType<ShopService['toShopView']> & { imageList: ShopImageView[] }>> {
+    const shopIdList = shopList.map((shop) => toIdentifier(shop.id));
+    const imageList = shopIdList.length === 0 ? [] : await this.shopImageRepository.find({
+      where: { shopId: In(shopIdList) },
+      order: { sortOrder: 'ASC', id: 'ASC' },
+    });
+    return shopList.map((shop) => {
+      const shopId = toIdentifier(shop.id);
+      return {
+        ...this.toShopView(shop),
+        imageList: imageList.filter((shopImage) => toIdentifier(shopImage.shopId) === shopId).map((shopImage) => this.toImageView(shopImage)),
+      };
+    });
+  }
+
+  /**
+   * 确认门店已绑定，且类型与当前业务一致。
+   */
+  private async findWritableShop(shopId: string, shopType: string, boundShopIdList: string[]): Promise<Shop> {
+    if (!boundShopIdList.includes(toIdentifier(shopId))) {
+      throw new BusinessException('无权修改该门店');
+    }
+    const shop = await this.shopRepository.findOne({ where: { id: shopId, shopType } });
+    if (isEmpty(shop)) {
+      throw new BusinessException('门店不存在');
+    }
+    return shop;
+  }
+
+  /**
+   * 按图片类型得到后缀。不支持的类型直接拒绝。
+   */
+  private resolveImageExtension(mimetype: string): string {
+    if (mimetype === ShopImageMime.JPEG) {
+      return '.jpg';
+    }
+    if (mimetype === ShopImageMime.PNG) {
+      return '.png';
+    }
+    if (mimetype === ShopImageMime.WEBP) {
+      return '.webp';
+    }
+    throw new BusinessException('只支持 jpg、png、webp');
+  }
+
+  /**
+   * 转成前端使用的图片字段。
+   */
+  private toImageView(shopImage: ShopImage): ShopImageView {
+    return {
+      imageId: toIdentifier(shopImage.id),
+      imageUrl: shopImage.imageUrl,
+    };
   }
 
   /**

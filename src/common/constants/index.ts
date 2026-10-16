@@ -52,6 +52,23 @@ export const ShopType = {
 } as const;
 
 /**
+ * 门店图片数量和大小上限。
+ */
+export const ShopImageLimit = {
+  MAX_COUNT: 6,
+  MAX_BYTES: 5 * 1024 * 1024,
+} as const;
+
+/**
+ * 允许上传的门店图片类型。
+ */
+export const ShopImageMime = {
+  JPEG: 'image/jpeg',
+  PNG: 'image/png',
+  WEBP: 'image/webp',
+} as const;
+
+/**
  * 通用启停状态。
  */
 export const RecordStatus = {
