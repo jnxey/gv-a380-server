@@ -141,6 +141,17 @@ export const KtvBookingSlot = {
 } as const;
 
 /**
+ * KTV 包厢运营状态。使用中只由核销写入，其余可手动切换。
+ */
+export const KtvRoomStatus = {
+  IDLE: 'IDLE',
+  IN_USE: 'IN_USE',
+  CLEANING: 'CLEANING',
+  MAINTENANCE: 'MAINTENANCE',
+  CLOSED: 'CLOSED',
+} as const;
+
+/**
  * KTV 店内消费单状态。
  */
 export const KtvConsumeStatus = {

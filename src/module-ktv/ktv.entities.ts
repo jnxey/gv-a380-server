@@ -78,6 +78,9 @@ export class KtvRoom {
   @Column({ type: 'varchar', length: 16 })
   status: string;
 
+  @Column({ type: 'varchar', length: 16, default: 'IDLE' })
+  roomStatus: string;
+
   @Column({ type: 'int', unsigned: true, default: 0 })
   sortOrder: number;
 

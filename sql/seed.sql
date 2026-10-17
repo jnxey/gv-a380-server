@@ -87,7 +87,8 @@ INSERT INTO sys_menu (id, parent_id, menu_name, menu_path, component_path, permi
 (31, 3, '门店管理', '/ktv/shop', 'ktv/shop', 'ktv:shop:query', 'KTV', 31),
 (34, 3, '包厢类型', '/ktv/room-type', 'ktv/room-type', 'ktv:room-type:query', 'KTV', 32),
 (32, 3, '包厢管理', '/ktv/room', 'ktv/room', 'ktv:room:query', 'KTV', 33),
-(33, 3, '订单核销', '/ktv/verify', 'ktv/verify', 'ktv:order:query', 'KTV', 34),
+(35, 3, '包厢状态', '/ktv/room-status', 'ktv/room-status', 'ktv:room:query', 'KTV', 34),
+(33, 3, '订单管理', '/ktv/verify', 'ktv/verify', 'ktv:order:query', 'KTV', 35),
 (40, 4, '门店管理', '/hotel/shop', 'hotel/shop', 'hotel:shop:query', 'HOTEL', 40),
 (41, 4, '房型管理', '/hotel/room-type', 'hotel/room-type', 'hotel:room-type:query', 'HOTEL', 41),
 (42, 4, '房间管理', '/hotel/room', 'hotel/room', 'hotel:room:query', 'HOTEL', 42),
@@ -98,10 +99,10 @@ INSERT INTO sys_menu (id, parent_id, menu_name, menu_path, component_path, permi
 
 INSERT INTO sys_role_menu (id, role_id, menu_id) VALUES
 (1, 1, 1),(2, 1, 2),(3, 1, 3),(4, 1, 4),
-(5, 1, 11),(6, 1, 12),(7, 1, 21),(8, 1, 31),(9, 1, 32),(10, 1, 33),(36, 1, 34),
+(5, 1, 11),(6, 1, 12),(7, 1, 21),(8, 1, 31),(9, 1, 32),(38, 1, 35),(10, 1, 33),(36, 1, 34),
 (11, 1, 41),(12, 1, 42),(13, 1, 43),
 (14, 2, 1),(15, 2, 2),(16, 2, 11),(17, 2, 12),(18, 2, 21),
-(19, 3, 3),(20, 3, 31),(21, 3, 32),(22, 3, 33),(37, 3, 34),
+(19, 3, 3),(20, 3, 31),(21, 3, 32),(39, 3, 35),(22, 3, 33),(37, 3, 34),
 (23, 4, 3),(24, 4, 33),
 (25, 5, 4),(26, 5, 41),(27, 5, 42),(28, 5, 43),
 (29, 6, 4),(30, 6, 43),
@@ -128,10 +129,10 @@ INSERT INTO ktv_room_type (id, shop_id, type_name, hourly_price, status, sort_or
 (5, 2, '中包', 400.00, 'ENABLED', 1),
 (6, 2, '大包', 600.00, 'ENABLED', 0);
 
-INSERT INTO ktv_room (id, shop_id, room_no, room_name, room_type_id, capacity, status, sort_order) VALUES
-(1, 1, 'A01', 'KTV01小包', 1, 4, 'ENABLED', 1),
-(2, 1, 'A02', 'KTV01中包', 2, 8, 'ENABLED', 0),
-(3, 2, 'B01', 'KTV02中包', 5, 8, 'ENABLED', 0);
+INSERT INTO ktv_room (id, shop_id, room_no, room_name, room_type_id, capacity, status, room_status, sort_order) VALUES
+(1, 1, 'A01', 'KTV01小包', 1, 4, 'ENABLED', 'IDLE', 1),
+(2, 1, 'A02', 'KTV01中包', 2, 8, 'ENABLED', 'IDLE', 0),
+(3, 2, 'B01', 'KTV02中包', 5, 8, 'ENABLED', 'IDLE', 0);
 
 INSERT INTO hotel_room_type (id, shop_id, type_name, price, status, sort_order) VALUES
 (1, 3, '大床房', 300.00, 'ENABLED', 1),

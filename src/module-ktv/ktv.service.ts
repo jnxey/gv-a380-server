@@ -13,6 +13,7 @@ import {
   KtvBookingHour,
   KtvBookingSlot,
   KtvConsumeStatus,
+  KtvRoomStatus,
   KtvOrderStatus,
   PageSetting,
   RecordStatus,
@@ -259,7 +260,7 @@ export class KtvService {
   }
 
   /**
-   * 小程序按门店查询可预订的包厢类型。没有启用包厢的类型不返回。
+   * 小程序按门店查询可预订的包厢类型。没有空闲包厢的类型不返回。
    */
   async listEnabledRoomTypes(shopId: string): Promise<KtvRoomType[]> {
     const shop = await this.shopService.findEnabledShop(shopId, ShopType.KTV);
@@ -276,6 +277,7 @@ export class KtvService {
         shopId: currentShopId,
         roomTypeId: In(roomTypeList.map((roomType) => toIdentifier(roomType.id))),
         status: RecordStatus.ENABLED,
+        roomStatus: KtvRoomStatus.IDLE,
       },
     });
     const bookableRoomTypeIdSet = new Set(enabledRoomList.map((room) => toIdentifier(room.roomTypeId)));
@@ -291,6 +293,7 @@ export class KtvService {
     await this.requireRoomType(command.roomTypeId);
     const ktvRoom = new KtvRoom();
     ktvRoom.shopId = currentShopId;
+    ktvRoom.roomStatus = KtvRoomStatus.IDLE;
     ktvRoom.sortOrder = await this.nextSortOrder(this.ktvRoomRepository);
     this.fillRoom(ktvRoom, command);
     try {
@@ -316,6 +319,24 @@ export class KtvService {
     } catch (error) {
       this.rethrowDuplicateRoom(error);
     }
+  }
+
+  /**
+   * 手动切换包厢运营状态。使用中只允许从空闲开包厢写入。
+   */
+  async updateRoomStatus(roomId: string, roomStatus: string): Promise<void> {
+    if (isOneOf(roomStatus, Object.values(KtvRoomStatus)) !== true) {
+      throw new BusinessException('包厢状态不正确');
+    }
+    const ktvRoom = await this.ktvRoomRepository.findOne({ where: { id: roomId } });
+    if (isEmpty(ktvRoom)) {
+      throw new BusinessException('包厢不存在');
+    }
+    if (roomStatus === KtvRoomStatus.IN_USE && ktvRoom.roomStatus !== KtvRoomStatus.IDLE) {
+      throw new BusinessException('只有空闲包厢可以开包厢');
+    }
+    ktvRoom.roomStatus = roomStatus;
+    await this.ktvRoomRepository.save(ktvRoom);
   }
 
   /**
@@ -351,9 +372,9 @@ export class KtvService {
         throw new BusinessException('包厢类型不存在或已停用');
       }
       const roomTypeId = toIdentifier(ktvRoomType.id);
-      // 3. 可售数量只数该类型启用中的包厢。一间都没有时，不是时段订满
+      // 3. 可售数量只数该类型启用且空闲的包厢。一间都没有时，不是时段订满
       const enabledRoomList = await entityManager.getRepository(KtvRoom).find({
-        where: { shopId, roomTypeId, status: RecordStatus.ENABLED },
+        where: { shopId, roomTypeId, status: RecordStatus.ENABLED, roomStatus: KtvRoomStatus.IDLE },
       });
       if (enabledRoomList.length === 0) {
         throw new BusinessException('该包厢类型没有可售包厢');
@@ -408,13 +429,21 @@ export class KtvService {
   }
 
   /**
-   * 后台分页查询当前门店预订订单。
+   * 后台分页查询当前门店预订订单。传入订单状态时只查该状态。
    */
-  async pageBookingOrders(verifyCode: string, pageValue: unknown, pageSizeValue: unknown): Promise<PageResult<KtvBookingOrderView>> {
+  async pageBookingOrders(
+    verifyCode: string,
+    orderStatus: string,
+    pageValue: unknown,
+    pageSizeValue: unknown,
+  ): Promise<PageResult<KtvBookingOrderView>> {
     const pageResult = resolvePage(pageValue, pageSizeValue);
     const whereCondition: FindOptionsWhere<KtvBookingOrder> = {};
     if (!isEmpty(verifyCode)) {
       whereCondition.verifyCode = verifyCode;
+    }
+    if (!isEmpty(orderStatus)) {
+      whereCondition.orderStatus = orderStatus;
     }
     const [bookingOrderList, total] = await this.ktvBookingOrderRepository.findAndCount({
       where: whereCondition,
@@ -473,6 +502,9 @@ export class KtvService {
       if (toIdentifier(ktvRoom.roomTypeId) !== toIdentifier(bookingOrder.roomTypeId)) {
         throw new BusinessException('包厢类型不匹配');
       }
+      if (ktvRoom.roomStatus !== KtvRoomStatus.IDLE) {
+        throw new BusinessException('包厢不是空闲状态');
+      }
       // 3. 该包厢在订单时段内不能已有另一笔已分配的有效订单，跨天同样相交
       const assignedRange = this.resolveBookingRange(
         String(bookingOrder.bookingDate).slice(0, 10),
@@ -493,6 +525,8 @@ export class KtvService {
       }
       bookingOrder.roomId = toIdentifier(ktvRoom.id);
       bookingOrder.orderStatus = KtvOrderStatus.VERIFIED;
+      ktvRoom.roomStatus = KtvRoomStatus.IN_USE;
+      await entityManager.getRepository(KtvRoom).save(ktvRoom);
       await entityManager.getRepository(KtvBookingOrder).save(bookingOrder);
     });
   }
@@ -513,6 +547,7 @@ export class KtvService {
         shopId: toIdentifier(bookingOrder.shopId),
         roomTypeId: toIdentifier(bookingOrder.roomTypeId),
         status: RecordStatus.ENABLED,
+        roomStatus: KtvRoomStatus.IDLE,
       },
       order: { roomNo: 'ASC' },
     });
