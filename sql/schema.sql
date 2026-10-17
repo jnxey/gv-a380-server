@@ -268,10 +268,12 @@ CREATE TABLE ktv_booking_order (
   shop_id BIGINT UNSIGNED NOT NULL COMMENT '门店ID',
   order_no VARCHAR(64) NOT NULL COMMENT '订单号',
   member_id BIGINT UNSIGNED NOT NULL COMMENT '会员ID',
-  room_id BIGINT UNSIGNED NOT NULL COMMENT '包厢ID',
+  room_type_id BIGINT UNSIGNED NOT NULL COMMENT '包厢类型ID',
+  room_id BIGINT UNSIGNED NULL COMMENT '包厢ID，核销后分配',
   booking_date DATE NOT NULL COMMENT '预订日期',
   start_time TIME NOT NULL COMMENT '开始时间',
   end_time TIME NOT NULL COMMENT '结束时间',
+  duration_hours INT UNSIGNED NOT NULL COMMENT '演唱小时数',
   amount DECIMAL(12,2) NOT NULL COMMENT '订单金额',
   order_status VARCHAR(32) NOT NULL COMMENT '订单状态：PENDING_VERIFY、VERIFIED、COMPLETED、CANCELLED、REFUNDED',
   verify_code VARCHAR(32) NOT NULL COMMENT '核销码',
@@ -280,12 +282,14 @@ CREATE TABLE ktv_booking_order (
   PRIMARY KEY (id),
   UNIQUE KEY uk_ktv_booking_order_no (order_no),
   KEY idx_ktv_booking_room_date (shop_id, room_id, booking_date),
+  KEY idx_ktv_booking_type_date (shop_id, room_type_id, booking_date),
   KEY idx_ktv_booking_shop_status (shop_id, order_status),
   KEY idx_ktv_booking_member (member_id),
   KEY idx_ktv_booking_verify_code (verify_code),
   CONSTRAINT fk_ktv_booking_shop FOREIGN KEY (shop_id) REFERENCES shop (id),
   CONSTRAINT fk_ktv_booking_member FOREIGN KEY (member_id) REFERENCES member_account (id),
-  CONSTRAINT fk_ktv_booking_room FOREIGN KEY (room_id) REFERENCES ktv_room (id)
+  CONSTRAINT fk_ktv_booking_room FOREIGN KEY (room_id) REFERENCES ktv_room (id),
+  CONSTRAINT fk_ktv_booking_room_type FOREIGN KEY (room_type_id) REFERENCES ktv_room_type (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='KTV预订订单';
 
 CREATE TABLE ktv_consume_order (

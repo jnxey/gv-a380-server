@@ -1,8 +1,8 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Type } from 'class-transformer';
-import { ArrayNotEmpty, IsArray, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Min } from 'class-validator';
-import { ModuleCode, PermissionCode, RecordStatus, ShopImageLimit } from '../common/constants';
+import { ArrayNotEmpty, IsArray, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
+import { KtvBookingHour, ModuleCode, PermissionCode, RecordStatus, ShopImageLimit } from '../common/constants';
 import { PageQueryDto } from '../common/dto/page-query.dto';
 import { CurrentAccount } from '../common/decorators/current-account.decorator';
 import { RequireModule, RequirePermission, RequiresShop } from '../common/decorators/auth.decorators';
@@ -81,6 +81,15 @@ export class KtvConsumeDto {
 }
 
 /**
+ * 核销时分配的包厢。
+ */
+export class VerifyKtvBookingDto {
+  @IsString()
+  @IsNotEmpty()
+  roomId: string;
+}
+
+/**
  * 小程序创建预订。
  */
 export class CreateKtvBookingDto {
@@ -90,7 +99,7 @@ export class CreateKtvBookingDto {
 
   @IsString()
   @IsNotEmpty()
-  roomId: string;
+  roomTypeId: string;
 
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   bookingDate: string;
@@ -98,8 +107,11 @@ export class CreateKtvBookingDto {
   @Matches(/^\d{2}:\d{2}:\d{2}$/)
   startTime: string;
 
-  @Matches(/^\d{2}:\d{2}:\d{2}$/)
-  endTime: string;
+  @Type(() => Number)
+  @IsInt()
+  @Min(KtvBookingHour.MIN)
+  @Max(KtvBookingHour.MAX)
+  durationHours: number;
 }
 
 /**
@@ -215,12 +227,21 @@ export class KtvAdminController {
   }
 
   /**
-   * 核销到店订单。
+   * 查询这笔订单还能分配的空闲包厢。
+   */
+  @Get('booking-orders/:bookingOrderId/free-rooms')
+  @RequirePermission(PermissionCode.KTV_ORDER_VERIFY)
+  listFreeRooms(@Param('bookingOrderId') bookingOrderId: string) {
+    return this.ktvService.listFreeRooms(bookingOrderId);
+  }
+
+  /**
+   * 核销到店订单，并写入前台分配的包厢。
    */
   @Post('booking-orders/:bookingOrderId/verify')
   @RequirePermission(PermissionCode.KTV_ORDER_VERIFY)
-  verifyBooking(@Param('bookingOrderId') bookingOrderId: string) {
-    return this.ktvService.verifyBooking(bookingOrderId);
+  verifyBooking(@Param('bookingOrderId') bookingOrderId: string, @Body() verifyKtvBookingDto: VerifyKtvBookingDto) {
+    return this.ktvService.verifyBooking(bookingOrderId, verifyKtvBookingDto.roomId);
   }
 
   /**
@@ -252,6 +273,14 @@ export class KtvAdminController {
 @Controller('app/ktv')
 export class KtvAppController {
   constructor(private readonly ktvService: KtvService) {}
+
+  /**
+   * 查询指定 KTV 的可预订包厢类型。
+   */
+  @Get('room-types')
+  listRoomTypes(@Query('shopId') shopId: string) {
+    return this.ktvService.listEnabledRoomTypes(shopId);
+  }
 
   /**
    * 查询指定 KTV 的可售包厢。

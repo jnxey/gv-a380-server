@@ -124,6 +124,23 @@ export const KtvBookingCancelableStatusList = [
 ];
 
 /**
+ * 单笔预订的演唱小时数。
+ */
+export const KtvBookingHour = {
+  MIN: 1,
+  MAX: 24,
+} as const;
+
+/**
+ * 可预约的开唱刻度。离下一档不足 15 分钟时，从再下一档开始，一共 8 个。
+ */
+export const KtvBookingSlot = {
+  COUNT: 8,
+  STEP_MINUTES: 30,
+  LEAD_MINUTES: 15,
+} as const;
+
+/**
  * KTV 店内消费单状态。
  */
 export const KtvConsumeStatus = {

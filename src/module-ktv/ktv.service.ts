@@ -3,12 +3,15 @@ import { mkdir, unlink, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, FindOptionsWhere, In, Repository } from 'typeorm';
+import Decimal from 'decimal.js';
+import { DataSource, EntityManager, FindOptionsWhere, In, Repository, SelectQueryBuilder } from 'typeorm';
 import {
   BusinessNoPrefix,
   FinanceBizType,
   KtvBookingActiveStatusList,
   KtvBookingCancelableStatusList,
+  KtvBookingHour,
+  KtvBookingSlot,
   KtvConsumeStatus,
   KtvOrderStatus,
   PageSetting,
@@ -30,14 +33,14 @@ import { ShopService } from '../core/shop/shop.service';
 import { KtvBookingOrder, KtvConsumeOrder, KtvRoom, KtvRoomType, KtvRoomTypeImage } from './ktv.entities';
 
 /**
- * 小程序创建 KTV 预订的入参。门店和包厢都会在服务端再次核对归属。
+ * 小程序创建 KTV 预订的入参。只选包厢类型，具体包厢到店再分配。
  */
 export interface CreateKtvBookingCommand {
   shopId: string;
-  roomId: string;
+  roomTypeId: string;
   bookingDate: string;
   startTime: string;
-  endTime: string;
+  durationHours: number;
 }
 
 /**
@@ -99,12 +102,15 @@ export interface KtvBookingOrderView {
   memberId: string;
   memberName: string;
   mobile: string;
+  roomTypeId: string;
+  roomTypeName: string;
   roomId: string;
   roomNo: string;
   roomName: string;
   bookingDate: string;
   startTime: string;
   endTime: string;
+  durationHours: number;
   amount: string;
   orderStatus: string;
   verifyCode: string;
@@ -253,6 +259,30 @@ export class KtvService {
   }
 
   /**
+   * 小程序按门店查询可预订的包厢类型。没有启用包厢的类型不返回。
+   */
+  async listEnabledRoomTypes(shopId: string): Promise<KtvRoomType[]> {
+    const shop = await this.shopService.findEnabledShop(shopId, ShopType.KTV);
+    const currentShopId = toIdentifier(shop.id);
+    const roomTypeList = await this.ktvRoomTypeRepository.find({
+      where: { shopId: currentShopId, status: RecordStatus.ENABLED },
+      order: { sortOrder: 'ASC', id: 'ASC' },
+    });
+    if (roomTypeList.length === 0) {
+      return [];
+    }
+    const enabledRoomList = await this.ktvRoomRepository.find({
+      where: {
+        shopId: currentShopId,
+        roomTypeId: In(roomTypeList.map((roomType) => toIdentifier(roomType.id))),
+        status: RecordStatus.ENABLED,
+      },
+    });
+    const bookableRoomTypeIdSet = new Set(enabledRoomList.map((room) => toIdentifier(room.roomTypeId)));
+    return roomTypeList.filter((roomType) => bookableRoomTypeIdSet.has(toIdentifier(roomType.id)));
+  }
+
+  /**
    * 新建当前门店的包厢。
    */
   async createRoom(command: SaveKtvRoomCommand): Promise<KtvRoom> {
@@ -299,59 +329,63 @@ export class KtvService {
    * 创建预订订单，并在同一事务内扣减会员余额。
    */
   async createBooking(memberId: string, command: CreateKtvBookingCommand): Promise<KtvBookingOrder> {
-    if (command.startTime >= command.endTime) {
-      throw new BusinessException('结束时间必须晚于开始时间');
+    const durationHours = Number(command.durationHours);
+    if (Number.isInteger(durationHours) !== true || durationHours < KtvBookingHour.MIN || durationHours > KtvBookingHour.MAX) {
+      throw new BusinessException('演唱小时数必须在1到24之间');
     }
+    this.assertBookableSlot(command.bookingDate, command.startTime);
+    const bookingRange = this.resolveBookingRange(command.bookingDate, command.startTime, durationHours);
     return this.dataSource.transaction(async (entityManager) => {
       // 1. 校验门店真实存在且为启用中的 KTV，不以请求里的门店文本直接落库
       const shop = await this.shopService.findEnabledShopInManager(entityManager, command.shopId, ShopType.KTV);
       const shopId = toIdentifier(shop.id);
-      // 2. 锁定包厢，确认它属于该门店且仍在售
-      const ktvRoom = await entityManager
-        .getRepository(KtvRoom)
-        .createQueryBuilder('ktvRoom')
+      // 2. 锁定包厢类型，确认它属于该门店且仍在售
+      const ktvRoomType = await entityManager
+        .getRepository(KtvRoomType)
+        .createQueryBuilder('ktvRoomType')
         .setLock('pessimistic_write')
-        .where('ktvRoom.id = :roomId', { roomId: command.roomId })
-        .andWhere('ktvRoom.shopId = :shopId', { shopId })
+        .where('ktvRoomType.id = :roomTypeId', { roomTypeId: command.roomTypeId })
+        .andWhere('ktvRoomType.shopId = :shopId', { shopId })
         .getOne();
-      if (isEmpty(ktvRoom) || ktvRoom.status !== RecordStatus.ENABLED) {
-        throw new BusinessException('包厢不存在或已停用');
+      if (isEmpty(ktvRoomType) || ktvRoomType.status !== RecordStatus.ENABLED) {
+        throw new BusinessException('包厢类型不存在或已停用');
       }
-      // 3. 同一包厢、同一天的有效订单时段不能重叠
-      const conflictOrder = await entityManager
+      const roomTypeId = toIdentifier(ktvRoomType.id);
+      // 3. 可售数量只数该类型启用中的包厢。一间都没有时，不是时段订满
+      const enabledRoomList = await entityManager.getRepository(KtvRoom).find({
+        where: { shopId, roomTypeId, status: RecordStatus.ENABLED },
+      });
+      if (enabledRoomList.length === 0) {
+        throw new BusinessException('该包厢类型没有可售包厢');
+      }
+      // 4. 锁住时段相交的有效订单，跨天也算相交，名额用完则拒绝
+      const occupiedQuery = entityManager
         .getRepository(KtvBookingOrder)
         .createQueryBuilder('bookingOrder')
         .setLock('pessimistic_write')
         .where('bookingOrder.shopId = :shopId', { shopId })
-        .andWhere('bookingOrder.roomId = :roomId', { roomId: toIdentifier(ktvRoom.id) })
-        .andWhere('bookingOrder.bookingDate = :bookingDate', { bookingDate: command.bookingDate })
-        .andWhere('bookingOrder.orderStatus IN (:...activeStatusList)', { activeStatusList: KtvBookingActiveStatusList })
-        .andWhere('bookingOrder.startTime < :endTime', { endTime: command.endTime })
-        .andWhere('bookingOrder.endTime > :startTime', { startTime: command.startTime })
-        .getOne();
-      if (!isEmpty(conflictOrder)) {
-        throw new BusinessException('该时段包厢已被预订');
+        .andWhere('bookingOrder.roomTypeId = :roomTypeId', { roomTypeId });
+      this.appendOccupiedRange(occupiedQuery, 'bookingOrder', bookingRange.rangeStart, bookingRange.rangeEnd);
+      const occupiedOrderList = await occupiedQuery.getMany();
+      if (occupiedOrderList.length >= enabledRoomList.length) {
+        throw new BusinessException('该时段已订满');
       }
-      // 4. 写入待核销订单，金额等于包厢类型的每小时价格
-      const ktvRoomType = await entityManager.getRepository(KtvRoomType).findOne({
-        where: { id: toIdentifier(ktvRoom.roomTypeId), shopId },
-      });
-      if (isEmpty(ktvRoomType)) {
-        throw new BusinessException('包厢类型不存在');
-      }
+      // 5. 写入待核销订单，先不分配具体包厢。金额等于每小时价格乘以小时数
       const bookingOrder = new KtvBookingOrder();
       bookingOrder.shopId = shopId;
       bookingOrder.orderNo = createBusinessNo(BusinessNoPrefix.KTV_BOOKING);
       bookingOrder.memberId = memberId;
-      bookingOrder.roomId = toIdentifier(ktvRoom.id);
+      bookingOrder.roomTypeId = roomTypeId;
+      bookingOrder.roomId = null;
       bookingOrder.bookingDate = command.bookingDate;
       bookingOrder.startTime = command.startTime;
-      bookingOrder.endTime = command.endTime;
-      bookingOrder.amount = toMoneyString(ktvRoomType.hourlyPrice);
+      bookingOrder.endTime = bookingRange.endTime;
+      bookingOrder.durationHours = durationHours;
+      bookingOrder.amount = toMoneyString(new Decimal(ktvRoomType.hourlyPrice).times(durationHours));
       bookingOrder.orderStatus = KtvOrderStatus.PENDING_VERIFY;
       bookingOrder.verifyCode = await this.createUniqueVerifyCode(entityManager);
       const savedOrder = await entityManager.getRepository(KtvBookingOrder).save(bookingOrder);
-      // 5. 调用 core 扣余额。失败会连同订单一起回滚
+      // 6. 调用 core 扣余额。失败会连同订单一起回滚
       await this.memberBalanceService.deductBalance({
         entityManager,
         memberId,
@@ -362,7 +396,7 @@ export class KtvService {
         operatorId: null,
         remark: 'KTV包厢预订',
       });
-      // 6. 通知会员预订结果
+      // 7. 通知会员预订结果
       await this.notifyService.createMemberMessage(entityManager, {
         shopId,
         memberId,
@@ -408,9 +442,65 @@ export class KtvService {
   }
 
   /**
-   * 到店核销。只改状态，不再次扣包厢费。
+   * 到店核销并分配空闲包厢。分不到包厢时订单保持待核销。
    */
-  async verifyBooking(bookingOrderId: string): Promise<void> {
+  async verifyBooking(bookingOrderId: string, roomId: string): Promise<void> {
+    await this.dataSource.transaction(async (entityManager) => {
+      // 1. 锁定待核销订单
+      const bookingOrder = await entityManager
+        .getRepository(KtvBookingOrder)
+        .createQueryBuilder('bookingOrder')
+        .setLock('pessimistic_write')
+        .where('bookingOrder.id = :bookingOrderId', { bookingOrderId })
+        .getOne();
+      if (isEmpty(bookingOrder)) {
+        throw new BusinessException('订单不存在');
+      }
+      if (bookingOrder.orderStatus !== KtvOrderStatus.PENDING_VERIFY) {
+        throw new BusinessException('当前状态不能核销');
+      }
+      // 2. 包厢必须属于当前门店、订单上的类型，并且仍启用
+      const ktvRoom = await entityManager
+        .getRepository(KtvRoom)
+        .createQueryBuilder('ktvRoom')
+        .setLock('pessimistic_write')
+        .where('ktvRoom.id = :roomId', { roomId })
+        .andWhere('ktvRoom.shopId = :shopId', { shopId: toIdentifier(bookingOrder.shopId) })
+        .getOne();
+      if (isEmpty(ktvRoom) || ktvRoom.status !== RecordStatus.ENABLED) {
+        throw new BusinessException('包厢不存在或已停用');
+      }
+      if (toIdentifier(ktvRoom.roomTypeId) !== toIdentifier(bookingOrder.roomTypeId)) {
+        throw new BusinessException('包厢类型不匹配');
+      }
+      // 3. 该包厢在订单时段内不能已有另一笔已分配的有效订单，跨天同样相交
+      const assignedRange = this.resolveBookingRange(
+        String(bookingOrder.bookingDate).slice(0, 10),
+        String(bookingOrder.startTime).slice(0, 8),
+        bookingOrder.durationHours,
+      );
+      const conflictQuery = entityManager
+        .getRepository(KtvBookingOrder)
+        .createQueryBuilder('assignedOrder')
+        .setLock('pessimistic_write')
+        .where('assignedOrder.shopId = :shopId', { shopId: toIdentifier(bookingOrder.shopId) })
+        .andWhere('assignedOrder.roomId = :roomId', { roomId: toIdentifier(ktvRoom.id) })
+        .andWhere('assignedOrder.id != :bookingOrderId', { bookingOrderId: toIdentifier(bookingOrder.id) });
+      this.appendOccupiedRange(conflictQuery, 'assignedOrder', assignedRange.rangeStart, assignedRange.rangeEnd);
+      const conflictOrder = await conflictQuery.getOne();
+      if (isEmpty(conflictOrder) !== true) {
+        throw new BusinessException('该时段没有空闲包厢');
+      }
+      bookingOrder.roomId = toIdentifier(ktvRoom.id);
+      bookingOrder.orderStatus = KtvOrderStatus.VERIFIED;
+      await entityManager.getRepository(KtvBookingOrder).save(bookingOrder);
+    });
+  }
+
+  /**
+   * 列出这笔待核销订单在该时段还能分配的包厢。
+   */
+  async listFreeRooms(bookingOrderId: string): Promise<KtvRoom[]> {
     const bookingOrder = await this.ktvBookingOrderRepository.findOne({ where: { id: bookingOrderId } });
     if (isEmpty(bookingOrder)) {
       throw new BusinessException('订单不存在');
@@ -418,8 +508,27 @@ export class KtvService {
     if (bookingOrder.orderStatus !== KtvOrderStatus.PENDING_VERIFY) {
       throw new BusinessException('当前状态不能核销');
     }
-    bookingOrder.orderStatus = KtvOrderStatus.VERIFIED;
-    await this.ktvBookingOrderRepository.save(bookingOrder);
+    const roomList = await this.ktvRoomRepository.find({
+      where: {
+        shopId: toIdentifier(bookingOrder.shopId),
+        roomTypeId: toIdentifier(bookingOrder.roomTypeId),
+        status: RecordStatus.ENABLED,
+      },
+      order: { roomNo: 'ASC' },
+    });
+    const occupiedRange = this.resolveBookingRange(
+      String(bookingOrder.bookingDate).slice(0, 10),
+      String(bookingOrder.startTime).slice(0, 8),
+      bookingOrder.durationHours,
+    );
+    const occupiedQuery = this.ktvBookingOrderRepository
+      .createQueryBuilder('bookingOrder')
+      .where('bookingOrder.shopId = :shopId', { shopId: toIdentifier(bookingOrder.shopId) })
+      .andWhere('bookingOrder.roomId IS NOT NULL');
+    this.appendOccupiedRange(occupiedQuery, 'bookingOrder', occupiedRange.rangeStart, occupiedRange.rangeEnd);
+    const occupiedOrderList = await occupiedQuery.getMany();
+    const occupiedRoomIdSet = new Set(occupiedOrderList.map((occupiedOrder) => toIdentifier(occupiedOrder.roomId)));
+    return roomList.filter((room) => occupiedRoomIdSet.has(toIdentifier(room.id)) !== true);
   }
 
   /**
@@ -704,18 +813,122 @@ export class KtvService {
   }
 
   /**
+   * 开唱时间必须是当前时间之后的 8 个半小时刻度之一。
+   */
+  private assertBookableSlot(bookingDate: string, startTime: string): void {
+    const startTimeText = startTime.slice(0, 8);
+    const slotList = this.listBookableSlots(new Date());
+    const matchedSlot = slotList.find((slot) => slot.bookingDate === bookingDate && slot.startTime === startTimeText);
+    if (isEmpty(matchedSlot)) {
+      throw new BusinessException('请选择可预约的开唱时间');
+    }
+  }
+
+  /**
+   * 从可预约的第一档开唱时间起，列出全部刻度。
+   */
+  private listBookableSlots(now: Date): { bookingDate: string; startTime: string }[] {
+    const stepMilliseconds = KtvBookingSlot.STEP_MINUTES * 60 * 1000;
+    const leadMilliseconds = KtvBookingSlot.LEAD_MINUTES * 60 * 1000;
+    // 1. 正好落在刻度上时，这个刻度已经不大于当前时间，再往后推一档
+    let nextSlotTime = Math.ceil(now.getTime() / stepMilliseconds) * stepMilliseconds;
+    if (nextSlotTime <= now.getTime()) {
+      nextSlotTime += stepMilliseconds;
+    }
+    // 2. 离下一档不足 15 分钟时，从再下一档开始
+    if (nextSlotTime - now.getTime() < leadMilliseconds) {
+      nextSlotTime += stepMilliseconds;
+    }
+    // 3. 连续取出 8 个刻度
+    const slotList: { bookingDate: string; startTime: string }[] = [];
+    for (let slotIndex = 0; slotIndex < KtvBookingSlot.COUNT; slotIndex += 1) {
+      const slotTime = new Date(nextSlotTime + slotIndex * stepMilliseconds);
+      slotList.push({
+        bookingDate: this.formatDate(slotTime),
+        startTime: this.formatClockTime(slotTime),
+      });
+    }
+    return slotList;
+  }
+
+  /**
+   * 格式化成本地日期。
+   */
+  private formatDate(dateTime: Date): string {
+    const monthText = String(dateTime.getMonth() + 1).padStart(2, '0');
+    const dayText = String(dateTime.getDate()).padStart(2, '0');
+    return `${dateTime.getFullYear()}-${monthText}-${dayText}`;
+  }
+
+  /**
+   * 格式化成本地钟点，秒固定为 0。
+   */
+  private formatClockTime(dateTime: Date): string {
+    const hourText = String(dateTime.getHours()).padStart(2, '0');
+    const minuteText = String(dateTime.getMinutes()).padStart(2, '0');
+    return `${hourText}:${minuteText}:00`;
+  }
+
+  /**
+   * 用开唱日期、开唱时间和小时数算出占用区间。结束钟点可以落到第二天。
+   */
+  private resolveBookingRange(bookingDate: string, startTime: string, durationHours: number): {
+    rangeStart: string;
+    rangeEnd: string;
+    endTime: string;
+  } {
+    const datePartList = bookingDate.split('-').map((datePart) => Number(datePart));
+    const timePartList = startTime.split(':').map((timePart) => Number(timePart));
+    const startAt = new Date(datePartList[0], datePartList[1] - 1, datePartList[2], timePartList[0], timePartList[1], timePartList[2] || 0);
+    const endAt = new Date(startAt.getTime());
+    endAt.setHours(endAt.getHours() + durationHours);
+    return {
+      rangeStart: this.formatDateTime(startAt),
+      rangeEnd: this.formatDateTime(endAt),
+      endTime: `${String(endAt.getHours()).padStart(2, '0')}:${String(endAt.getMinutes()).padStart(2, '0')}:${String(endAt.getSeconds()).padStart(2, '0')}`,
+    };
+  }
+
+  /**
+   * 格式化成本地日期时间，供区间比较使用。
+   */
+  private formatDateTime(dateTime: Date): string {
+    const monthText = String(dateTime.getMonth() + 1).padStart(2, '0');
+    const dayText = String(dateTime.getDate()).padStart(2, '0');
+    const hourText = String(dateTime.getHours()).padStart(2, '0');
+    const minuteText = String(dateTime.getMinutes()).padStart(2, '0');
+    const secondText = String(dateTime.getSeconds()).padStart(2, '0');
+    return `${dateTime.getFullYear()}-${monthText}-${dayText} ${hourText}:${minuteText}:${secondText}`;
+  }
+
+  /**
+   * 给查询加上有效订单的时段相交条件。区间按开唱时刻加小时数计算，不限制在同一天。
+   */
+  private appendOccupiedRange(queryBuilder: SelectQueryBuilder<KtvBookingOrder>, aliasName: string, rangeStart: string, rangeEnd: string): void {
+    queryBuilder
+      .andWhere(`${aliasName}.orderStatus IN (:...activeStatusList)`, { activeStatusList: KtvBookingActiveStatusList })
+      .andWhere(`TIMESTAMP(${aliasName}.bookingDate, ${aliasName}.startTime) < :rangeEnd`, { rangeEnd })
+      .andWhere(`DATE_ADD(TIMESTAMP(${aliasName}.bookingDate, ${aliasName}.startTime), INTERVAL ${aliasName}.durationHours HOUR) > :rangeStart`, { rangeStart });
+  }
+
+  /**
    * 给订单补上包厢和会员展示字段。
    */
   private async toBookingViewList(bookingOrderList: KtvBookingOrder[]): Promise<KtvBookingOrderView[]> {
     if (bookingOrderList.length === 0) {
       return [];
     }
-    const roomIdList = bookingOrderList.map((bookingOrder) => toIdentifier(bookingOrder.roomId));
+    const roomIdList = bookingOrderList
+      .map((bookingOrder) => toIdentifier(bookingOrder.roomId))
+      .filter((roomId) => isEmpty(roomId) !== true);
+    const roomTypeIdList = bookingOrderList.map((bookingOrder) => toIdentifier(bookingOrder.roomTypeId));
     const memberIdList = bookingOrderList.map((bookingOrder) => toIdentifier(bookingOrder.memberId));
-    const roomList = await this.ktvRoomRepository.find({ where: { id: In(roomIdList) } });
+    const roomList = roomIdList.length === 0 ? [] : await this.ktvRoomRepository.find({ where: { id: In(roomIdList) } });
+    const roomTypeList = await this.ktvRoomTypeRepository.find({ where: { id: In(roomTypeIdList) } });
     const memberAccountList = await this.memberQueryService.findByIdList(memberIdList);
     return bookingOrderList.map((bookingOrder) => {
       const ktvRoom = roomList.find((room) => toIdentifier(room.id) === toIdentifier(bookingOrder.roomId));
+      const ktvRoomType = roomTypeList.find((roomType) => toIdentifier(roomType.id) === toIdentifier(bookingOrder.roomTypeId));
       const memberAccount = memberAccountList.find((member) => toIdentifier(member.id) === toIdentifier(bookingOrder.memberId));
       return {
         bookingOrderId: toIdentifier(bookingOrder.id),
@@ -724,12 +937,15 @@ export class KtvService {
         memberId: toIdentifier(bookingOrder.memberId),
         memberName: isEmpty(memberAccount) ? '' : memberAccount.memberName,
         mobile: isEmpty(memberAccount) ? '' : memberAccount.mobile,
+        roomTypeId: toIdentifier(bookingOrder.roomTypeId),
+        roomTypeName: isEmpty(ktvRoomType) ? '' : ktvRoomType.typeName,
         roomId: toIdentifier(bookingOrder.roomId),
         roomNo: isEmpty(ktvRoom) ? '' : ktvRoom.roomNo,
         roomName: isEmpty(ktvRoom) ? '' : ktvRoom.roomName,
         bookingDate: String(bookingOrder.bookingDate).slice(0, 10),
         startTime: String(bookingOrder.startTime).slice(0, 8),
         endTime: String(bookingOrder.endTime).slice(0, 8),
+        durationHours: bookingOrder.durationHours,
         amount: bookingOrder.amount,
         orderStatus: bookingOrder.orderStatus,
         verifyCode: bookingOrder.verifyCode,

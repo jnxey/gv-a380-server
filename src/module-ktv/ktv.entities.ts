@@ -106,7 +106,10 @@ export class KtvBookingOrder {
   memberId: string;
 
   @Column({ type: 'bigint', unsigned: true })
-  roomId: string;
+  roomTypeId: string;
+
+  @Column({ type: 'bigint', unsigned: true, nullable: true })
+  roomId: string | null;
 
   @Column({ type: 'date' })
   bookingDate: string;
@@ -116,6 +119,9 @@ export class KtvBookingOrder {
 
   @Column({ type: 'time' })
   endTime: string;
+
+  @Column({ type: 'int', unsigned: true })
+  durationHours: number;
 
   @Column({ type: 'decimal', precision: 12, scale: 2, transformer: decimalTransformer })
   amount: string;
