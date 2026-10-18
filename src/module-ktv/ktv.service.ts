@@ -30,6 +30,7 @@ import { createBusinessNo, createVerifyCode, isDuplicateEntryError, isEmpty, isN
 import { MemberBalanceService } from '../core/member/member-balance.service';
 import { MemberQueryService } from '../core/member/member-query.service';
 import { NotifyService } from '../core/notify/notify.service';
+import { Shop } from '../core/shop/shop.entity';
 import { ShopService } from '../core/shop/shop.service';
 import { KtvBookingOrder, KtvConsumeOrder, KtvRoom, KtvRoomType, KtvRoomTypeImage } from './ktv.entities';
 
@@ -260,9 +261,9 @@ export class KtvService {
   }
 
   /**
-   * 小程序按门店查询可预订的包厢类型。没有空闲包厢的类型不返回。
+   * 小程序按门店查询可预订的包厢类型。没有空闲包厢的类型不返回，结果带上类型图片。
    */
-  async listEnabledRoomTypes(shopId: string): Promise<KtvRoomType[]> {
+  async listEnabledRoomTypes(shopId: string): Promise<KtvRoomTypeView[]> {
     const shop = await this.shopService.findEnabledShop(shopId, ShopType.KTV);
     const currentShopId = toIdentifier(shop.id);
     const roomTypeList = await this.ktvRoomTypeRepository.find({
@@ -281,7 +282,8 @@ export class KtvService {
       },
     });
     const bookableRoomTypeIdSet = new Set(enabledRoomList.map((room) => toIdentifier(room.roomTypeId)));
-    return roomTypeList.filter((roomType) => bookableRoomTypeIdSet.has(toIdentifier(roomType.id)));
+    const bookableRoomTypeList = roomTypeList.filter((roomType) => bookableRoomTypeIdSet.has(toIdentifier(roomType.id)));
+    return this.toRoomTypeViewList(bookableRoomTypeList);
   }
 
   /**
@@ -354,7 +356,8 @@ export class KtvService {
     if (Number.isInteger(durationHours) !== true || durationHours < KtvBookingHour.MIN || durationHours > KtvBookingHour.MAX) {
       throw new BusinessException('演唱小时数必须在1到24之间');
     }
-    this.assertBookableSlot(command.bookingDate, command.startTime);
+    const enabledShop = await this.shopService.findEnabledShop(command.shopId, ShopType.KTV);
+    this.assertBookableSlot(enabledShop, command.bookingDate, command.startTime);
     const bookingRange = this.resolveBookingRange(command.bookingDate, command.startTime, durationHours);
     return this.dataSource.transaction(async (entityManager) => {
       // 1. 校验门店真实存在且为启用中的 KTV，不以请求里的门店文本直接落库
@@ -848,11 +851,11 @@ export class KtvService {
   }
 
   /**
-   * 开唱时间必须落在近 5 天的可预约刻度里。
+   * 开唱时间必须落在该门店近 5 天、营业时间内的可预约刻度里。
    */
-  private assertBookableSlot(bookingDate: string, startTime: string): void {
+  private assertBookableSlot(shop: Shop, bookingDate: string, startTime: string): void {
     const startTimeText = startTime.slice(0, 8);
-    const slotList = this.listBookableSlots(new Date());
+    const slotList = this.listBookableSlots(new Date(), shop);
     const matchedSlot = slotList.find((slot) => slot.bookingDate === bookingDate && slot.startTime === startTimeText);
     if (isEmpty(matchedSlot)) {
       throw new BusinessException('请选择可预约的开唱时间');
@@ -860,23 +863,70 @@ export class KtvService {
   }
 
   /**
-   * 列出近 5 天可预约的半小时刻度。今天只留剩余刻度，后四天是全天。
+   * 把门店时区偏移换成分钟。没有偏移时用本机偏移，钟面与当前一致。
    */
-  private listBookableSlots(now: Date): { bookingDate: string; startTime: string }[] {
+  private timeZoneOffsetMinutes(timeZoneOffset: string, now: Date): number {
+    if (isEmpty(timeZoneOffset)) {
+      return -now.getTimezoneOffset();
+    }
+    const signText = timeZoneOffset.slice(0, 1);
+    const hourText = timeZoneOffset.slice(1, 3);
+    const minuteText = timeZoneOffset.slice(4, 6);
+    if (isNumber(hourText) !== true || isNumber(minuteText) !== true) {
+      return -now.getTimezoneOffset();
+    }
+    const absoluteMinutes = Number(hourText) * 60 + Number(minuteText);
+    if (signText === '-') {
+      return -absoluteMinutes;
+    }
+    return absoluteMinutes;
+  }
+
+  /**
+   * 把当前时刻平移成门店钟面。日期和钟点读 UTC 字段，避免本机时区。
+   */
+  private toShopWallClock(now: Date, timeZoneOffset: string): Date {
+    const offsetMinutes = this.timeZoneOffsetMinutes(timeZoneOffset, now);
+    const offsetMilliseconds = offsetMinutes * 60 * 1000;
+    return new Date(now.getTime() + offsetMilliseconds);
+  }
+
+  /**
+   * 到店钟点是否落在营业时间内。开始包含，结束不包含。没有营业时间时整天可约。
+   */
+  private isInsideBusinessHours(startTime: string, businessHours: Shop['businessHours']): boolean {
+    if (isEmpty(businessHours) || isEmpty(businessHours.startTime) || isEmpty(businessHours.endTime)) {
+      return true;
+    }
+    const clockText = startTime.slice(0, 5);
+    if (clockText < businessHours.startTime) {
+      return false;
+    }
+    if (clockText >= businessHours.endTime) {
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * 列出近 5 天可预约的半小时刻度。今天只留剩余刻度，后四天是全天，再按营业时间过滤。
+   */
+  private listBookableSlots(now: Date, shop: Shop): { bookingDate: string; startTime: string }[] {
+    const shopNow = this.toShopWallClock(now, shop.timeZone);
     const stepMilliseconds = KtvBookingSlot.STEP_MINUTES * 60 * 1000;
     const leadMilliseconds = KtvBookingSlot.LEAD_MINUTES * 60 * 1000;
     const minutesPerDay = 24 * 60;
     const slotsPerDay = minutesPerDay / KtvBookingSlot.STEP_MINUTES;
     // 1. 正好落在刻度上时，这个刻度已经不大于当前时间，再往后推一档
-    let nextSlotTime = Math.ceil(now.getTime() / stepMilliseconds) * stepMilliseconds;
-    if (nextSlotTime <= now.getTime()) {
+    let nextSlotTime = Math.ceil(shopNow.getTime() / stepMilliseconds) * stepMilliseconds;
+    if (nextSlotTime <= shopNow.getTime()) {
       nextSlotTime += stepMilliseconds;
     }
     // 2. 离下一档不足 15 分钟时，从再下一档开始
-    if (nextSlotTime - now.getTime() < leadMilliseconds) {
+    if (nextSlotTime - shopNow.getTime() < leadMilliseconds) {
       nextSlotTime += stepMilliseconds;
     }
-    const todayText = this.formatDate(now);
+    const todayText = this.formatDate(shopNow);
     const slotList: { bookingDate: string; startTime: string }[] = [];
     // 3. 今天从第一档可用刻度收到当天结束
     let todaySlotTime = nextSlotTime;
@@ -888,10 +938,10 @@ export class KtvService {
       todaySlotTime += stepMilliseconds;
     }
     // 4. 后四天每天从 00:00 到 23:30
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayStart = new Date(Date.UTC(shopNow.getUTCFullYear(), shopNow.getUTCMonth(), shopNow.getUTCDate()));
     for (let dayOffset = 1; dayOffset < KtvBookingSlot.DAY_COUNT; dayOffset += 1) {
       const dayStart = new Date(todayStart.getTime());
-      dayStart.setDate(todayStart.getDate() + dayOffset);
+      dayStart.setUTCDate(todayStart.getUTCDate() + dayOffset);
       for (let slotIndex = 0; slotIndex < slotsPerDay; slotIndex += 1) {
         const slotTime = new Date(dayStart.getTime() + slotIndex * stepMilliseconds);
         slotList.push({
@@ -900,24 +950,32 @@ export class KtvService {
         });
       }
     }
-    return slotList;
+    // 5. 只留营业时间内的到店刻度。没有营业时间时整天都保留
+    const openSlotList: { bookingDate: string; startTime: string }[] = [];
+    for (let builtIndex = 0; builtIndex < slotList.length; builtIndex += 1) {
+      const builtSlot = slotList[builtIndex];
+      if (this.isInsideBusinessHours(builtSlot.startTime, shop.businessHours)) {
+        openSlotList.push(builtSlot);
+      }
+    }
+    return openSlotList;
   }
 
   /**
-   * 格式化成本地日期。
+   * 格式化成门店钟面日期。入参须是平移后的钟面时间。
    */
   private formatDate(dateTime: Date): string {
-    const monthText = String(dateTime.getMonth() + 1).padStart(2, '0');
-    const dayText = String(dateTime.getDate()).padStart(2, '0');
-    return `${dateTime.getFullYear()}-${monthText}-${dayText}`;
+    const monthText = String(dateTime.getUTCMonth() + 1).padStart(2, '0');
+    const dayText = String(dateTime.getUTCDate()).padStart(2, '0');
+    return `${dateTime.getUTCFullYear()}-${monthText}-${dayText}`;
   }
 
   /**
-   * 格式化成本地钟点，秒固定为 0。
+   * 格式化成门店钟点，秒固定为 0。入参须是平移后的钟面时间。
    */
   private formatClockTime(dateTime: Date): string {
-    const hourText = String(dateTime.getHours()).padStart(2, '0');
-    const minuteText = String(dateTime.getMinutes()).padStart(2, '0');
+    const hourText = String(dateTime.getUTCHours()).padStart(2, '0');
+    const minuteText = String(dateTime.getUTCMinutes()).padStart(2, '0');
     return `${hourText}:${minuteText}:00`;
   }
 
