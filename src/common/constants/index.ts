@@ -132,10 +132,10 @@ export const KtvBookingHour = {
 } as const;
 
 /**
- * 可预约的开唱刻度。离下一档不足 15 分钟时，从再下一档开始，一共 8 个。
+ * 可预约的开唱刻度。今天从下一档可用刻度起到 23:30，后四天每天 00:00 到 23:30。
  */
 export const KtvBookingSlot = {
-  COUNT: 8,
+  DAY_COUNT: 5,
   STEP_MINUTES: 30,
   LEAD_MINUTES: 15,
 } as const;

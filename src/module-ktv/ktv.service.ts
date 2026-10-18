@@ -848,7 +848,7 @@ export class KtvService {
   }
 
   /**
-   * 开唱时间必须是当前时间之后的 8 个半小时刻度之一。
+   * 开唱时间必须落在近 5 天的可预约刻度里。
    */
   private assertBookableSlot(bookingDate: string, startTime: string): void {
     const startTimeText = startTime.slice(0, 8);
@@ -860,11 +860,13 @@ export class KtvService {
   }
 
   /**
-   * 从可预约的第一档开唱时间起，列出全部刻度。
+   * 列出近 5 天可预约的半小时刻度。今天只留剩余刻度，后四天是全天。
    */
   private listBookableSlots(now: Date): { bookingDate: string; startTime: string }[] {
     const stepMilliseconds = KtvBookingSlot.STEP_MINUTES * 60 * 1000;
     const leadMilliseconds = KtvBookingSlot.LEAD_MINUTES * 60 * 1000;
+    const minutesPerDay = 24 * 60;
+    const slotsPerDay = minutesPerDay / KtvBookingSlot.STEP_MINUTES;
     // 1. 正好落在刻度上时，这个刻度已经不大于当前时间，再往后推一档
     let nextSlotTime = Math.ceil(now.getTime() / stepMilliseconds) * stepMilliseconds;
     if (nextSlotTime <= now.getTime()) {
@@ -874,14 +876,29 @@ export class KtvService {
     if (nextSlotTime - now.getTime() < leadMilliseconds) {
       nextSlotTime += stepMilliseconds;
     }
-    // 3. 连续取出 8 个刻度
+    const todayText = this.formatDate(now);
     const slotList: { bookingDate: string; startTime: string }[] = [];
-    for (let slotIndex = 0; slotIndex < KtvBookingSlot.COUNT; slotIndex += 1) {
-      const slotTime = new Date(nextSlotTime + slotIndex * stepMilliseconds);
+    // 3. 今天从第一档可用刻度收到当天结束
+    let todaySlotTime = nextSlotTime;
+    while (this.formatDate(new Date(todaySlotTime)) === todayText) {
       slotList.push({
-        bookingDate: this.formatDate(slotTime),
-        startTime: this.formatClockTime(slotTime),
+        bookingDate: todayText,
+        startTime: this.formatClockTime(new Date(todaySlotTime)),
       });
+      todaySlotTime += stepMilliseconds;
+    }
+    // 4. 后四天每天从 00:00 到 23:30
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    for (let dayOffset = 1; dayOffset < KtvBookingSlot.DAY_COUNT; dayOffset += 1) {
+      const dayStart = new Date(todayStart.getTime());
+      dayStart.setDate(todayStart.getDate() + dayOffset);
+      for (let slotIndex = 0; slotIndex < slotsPerDay; slotIndex += 1) {
+        const slotTime = new Date(dayStart.getTime() + slotIndex * stepMilliseconds);
+        slotList.push({
+          bookingDate: this.formatDate(slotTime),
+          startTime: this.formatClockTime(slotTime),
+        });
+      }
     }
     return slotList;
   }
