@@ -1,11 +1,42 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ModuleCode, PermissionCode, RecordStatus, ShopImageLimit, ShopType } from '../common/constants';
 import { RequireModule, RequirePermission, RequiresShop } from '../common/decorators/auth.decorators';
 import { CurrentAccount } from '../common/decorators/current-account.decorator';
 import { LoginAccountContext } from '../common/interfaces/login-account-context';
 import { ShopService } from '../core/shop/shop.service';
+
+/**
+ * 营业时间。结束必须晚于开始。
+ */
+export class ShopBusinessHoursDto {
+  @IsOptional()
+  @IsString()
+  startTime?: string;
+
+  @IsOptional()
+  @IsString()
+  endTime?: string;
+}
+
+/**
+ * 门店地址。经纬度是数字，描述是文字。
+ */
+export class ShopAddressDto {
+  @IsOptional()
+  @IsNumber()
+  longitude?: number;
+
+  @IsOptional()
+  @IsNumber()
+  latitude?: number;
+
+  @IsOptional()
+  @IsString()
+  addressText?: string;
+}
 
 /**
  * 保存 KTV 门店。
@@ -21,11 +52,21 @@ export class SaveKtvShopDto {
 
   @IsOptional()
   @IsString()
-  address?: string;
+  contactPhone?: string;
 
   @IsOptional()
   @IsString()
-  contactPhone?: string;
+  timeZone?: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ShopBusinessHoursDto)
+  businessHours?: ShopBusinessHoursDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ShopAddressDto)
+  shopAddress?: ShopAddressDto;
 
   @IsIn(Object.values(RecordStatus))
   status: string;
@@ -67,9 +108,12 @@ export class KtvShopAdminController {
     const shop = await this.shopService.createKtvShop({
       shopCode: saveKtvShopDto.shopCode,
       shopName: saveKtvShopDto.shopName,
-      address: saveKtvShopDto.address || '',
+      address: '',
       contactPhone: saveKtvShopDto.contactPhone || '',
       status: saveKtvShopDto.status,
+      timeZone: saveKtvShopDto.timeZone,
+      businessHours: saveKtvShopDto.businessHours ?? null,
+      shopAddress: saveKtvShopDto.shopAddress ?? null,
       operatorId: loginAccountContext.accountId,
       boundShopIdList: loginAccountContext.boundShopIdList,
     });
@@ -117,9 +161,12 @@ export class KtvShopAdminController {
     const shop = await this.shopService.updateKtvShop(shopId, {
       shopCode: saveKtvShopDto.shopCode,
       shopName: saveKtvShopDto.shopName,
-      address: saveKtvShopDto.address || '',
+      address: '',
       contactPhone: saveKtvShopDto.contactPhone || '',
       status: saveKtvShopDto.status,
+      timeZone: saveKtvShopDto.timeZone,
+      businessHours: saveKtvShopDto.businessHours ?? null,
+      shopAddress: saveKtvShopDto.shopAddress ?? null,
       operatorId: loginAccountContext.accountId,
       boundShopIdList: loginAccountContext.boundShopIdList,
     });

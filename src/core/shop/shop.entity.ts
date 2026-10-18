@@ -1,6 +1,23 @@
 import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 
 /**
+ * 营业时间。结束早于开始时表示跨到第二天。
+ */
+export interface ShopBusinessHours {
+  startTime: string;
+  endTime: string;
+}
+
+/**
+ * 门店地址。经纬度和地址描述放在一起。
+ */
+export interface ShopAddressLocation {
+  longitude: number | null;
+  latitude: number | null;
+  addressText: string;
+}
+
+/**
  * 门店主表。
  */
 @Entity('shop')
@@ -19,6 +36,15 @@ export class Shop {
 
   @Column({ type: 'varchar', length: 255, default: '' })
   address: string;
+
+  @Column({ type: 'varchar', length: 64, default: '' })
+  timeZone: string;
+
+  @Column({ type: 'json', nullable: true })
+  businessHours: ShopBusinessHours | null;
+
+  @Column({ type: 'json', nullable: true })
+  shopAddress: ShopAddressLocation | null;
 
   @Column({ type: 'varchar', length: 32, default: '' })
   contactPhone: string;

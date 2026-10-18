@@ -9,7 +9,7 @@ import { BusinessException } from '../../common/exceptions/business.exception';
 import { isDuplicateEntryError, isEmpty, toIdentifier } from '../../common/tools';
 import { SysUserShop } from '../rbac/sys.entities';
 import { ShopImage } from './shop-image.entity';
-import { Shop } from './shop.entity';
+import { Shop, ShopAddressLocation, ShopBusinessHours } from './shop.entity';
 
 /**
  * 前端使用的一张门店图片。
@@ -39,6 +39,9 @@ export interface SaveShopCommand {
   status: string;
   operatorId: string;
   boundShopIdList: string[];
+  timeZone?: string;
+  businessHours?: { startTime?: string; endTime?: string } | null;
+  shopAddress?: { longitude?: number | null; latitude?: number | null; addressText?: string } | null;
 }
 
 /**
@@ -133,7 +136,7 @@ export class ShopService {
     shop.shopCode = command.shopCode;
     shop.shopName = command.shopName;
     shop.shopType = ShopType.KTV;
-    shop.address = isEmpty(command.address) ? '' : command.address;
+    this.fillKtvShopProfile(shop, command);
     shop.contactPhone = isEmpty(command.contactPhone) ? '' : command.contactPhone;
     shop.status = command.status;
     try {
@@ -166,7 +169,7 @@ export class ShopService {
     }
     shop.shopCode = command.shopCode;
     shop.shopName = command.shopName;
-    shop.address = isEmpty(command.address) ? '' : command.address;
+    this.fillKtvShopProfile(shop, command);
     shop.contactPhone = isEmpty(command.contactPhone) ? '' : command.contactPhone;
     shop.status = command.status;
     try {
@@ -188,6 +191,9 @@ export class ShopService {
     shop.shopName = command.shopName;
     shop.shopType = ShopType.HOTEL;
     shop.address = isEmpty(command.address) ? '' : command.address;
+    shop.timeZone = '';
+    shop.businessHours = null;
+    shop.shopAddress = null;
     shop.contactPhone = isEmpty(command.contactPhone) ? '' : command.contactPhone;
     shop.status = command.status;
     try {
@@ -350,9 +356,75 @@ export class ShopService {
   }
 
   /**
+   * 写入 KTV 门店的时区、营业时间和地址。地址描述同时写回原来的地址文本。
+   */
+  private fillKtvShopProfile(shop: Shop, command: SaveShopCommand): void {
+    shop.timeZone = isEmpty(command.timeZone) ? '' : command.timeZone;
+    shop.businessHours = this.normalizeBusinessHours(command.businessHours);
+    shop.shopAddress = this.normalizeShopAddress(command.shopAddress);
+    if (isEmpty(shop.shopAddress) || isEmpty(shop.shopAddress.addressText)) {
+      shop.address = '';
+      return;
+    }
+    shop.address = shop.shopAddress.addressText;
+  }
+
+  /**
+   * 开始和结束都空时不存营业时间。只填一边，或结束不晚于开始，则拒绝。
+   */
+  private normalizeBusinessHours(businessHours: { startTime?: string; endTime?: string } | null | undefined): ShopBusinessHours | null {
+    if (isEmpty(businessHours)) {
+      return null;
+    }
+    const startTime = isEmpty(businessHours.startTime) ? '' : businessHours.startTime;
+    const endTime = isEmpty(businessHours.endTime) ? '' : businessHours.endTime;
+    if (isEmpty(startTime) && isEmpty(endTime)) {
+      return null;
+    }
+    if (isEmpty(startTime) || isEmpty(endTime) || endTime <= startTime) {
+      throw new BusinessException('结束时间必须晚于开始时间');
+    }
+    return {
+      startTime,
+      endTime,
+    };
+  }
+
+  /**
+   * 经纬度和描述都空时不存门店地址。
+   */
+  private normalizeShopAddress(shopAddress: { longitude?: number | null; latitude?: number | null; addressText?: string } | null | undefined): ShopAddressLocation | null {
+    if (isEmpty(shopAddress)) {
+      return null;
+    }
+    const addressText = isEmpty(shopAddress.addressText) ? '' : shopAddress.addressText;
+    const longitude = isEmpty(shopAddress.longitude) ? null : shopAddress.longitude;
+    const latitude = isEmpty(shopAddress.latitude) ? null : shopAddress.latitude;
+    if (isEmpty(addressText) && isEmpty(longitude) && isEmpty(latitude)) {
+      return null;
+    }
+    return {
+      longitude,
+      latitude,
+      addressText,
+    };
+  }
+
+  /**
    * 转成前端使用的门店字段。
    */
-  toShopView(shop: Shop): { shopId: string; shopCode: string; shopName: string; shopType: string; address: string; contactPhone: string; status: string } {
+  toShopView(shop: Shop): {
+    shopId: string;
+    shopCode: string;
+    shopName: string;
+    shopType: string;
+    address: string;
+    contactPhone: string;
+    status: string;
+    timeZone: string;
+    businessHours: ShopBusinessHours | null;
+    shopAddress: ShopAddressLocation | null;
+  } {
     return {
       shopId: toIdentifier(shop.id),
       shopCode: shop.shopCode,
@@ -361,6 +433,9 @@ export class ShopService {
       address: shop.address,
       contactPhone: shop.contactPhone,
       status: shop.status,
+      timeZone: isEmpty(shop.timeZone) ? '' : shop.timeZone,
+      businessHours: isEmpty(shop.businessHours) ? null : shop.businessHours,
+      shopAddress: isEmpty(shop.shopAddress) ? null : shop.shopAddress,
     };
   }
 }
