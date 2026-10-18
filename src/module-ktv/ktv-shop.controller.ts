@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { IsDefined, IsIn, IsNotEmpty, IsNumber, IsString, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ModuleCode, PermissionCode, RecordStatus, ShopImageLimit, ShopType } from '../common/constants';
 import { RequireModule, RequirePermission, RequiresShop } from '../common/decorators/auth.decorators';
@@ -12,30 +12,27 @@ import { ShopService } from '../core/shop/shop.service';
  * 营业时间。结束必须晚于开始。
  */
 export class ShopBusinessHoursDto {
-  @IsOptional()
   @IsString()
-  startTime?: string;
+  @IsNotEmpty()
+  startTime: string;
 
-  @IsOptional()
   @IsString()
-  endTime?: string;
+  @IsNotEmpty()
+  endTime: string;
 }
 
 /**
  * 门店地址。经纬度是数字，描述是文字。
  */
 export class ShopAddressDto {
-  @IsOptional()
   @IsNumber()
-  longitude?: number;
+  longitude: number;
 
-  @IsOptional()
   @IsNumber()
-  latitude?: number;
+  latitude: number;
 
-  @IsOptional()
   @IsString()
-  addressText?: string;
+  addressText: string;
 }
 
 /**
@@ -50,23 +47,23 @@ export class SaveKtvShopDto {
   @IsNotEmpty()
   shopName: string;
 
-  @IsOptional()
   @IsString()
-  contactPhone?: string;
+  @IsNotEmpty()
+  contactPhone: string;
 
-  @IsOptional()
   @IsString()
-  timeZone?: string;
+  @IsNotEmpty()
+  timeZone: string;
 
-  @IsOptional()
+  @IsDefined()
   @ValidateNested()
   @Type(() => ShopBusinessHoursDto)
-  businessHours?: ShopBusinessHoursDto;
+  businessHours: ShopBusinessHoursDto;
 
-  @IsOptional()
+  @IsDefined()
   @ValidateNested()
   @Type(() => ShopAddressDto)
-  shopAddress?: ShopAddressDto;
+  shopAddress: ShopAddressDto;
 
   @IsIn(Object.values(RecordStatus))
   status: string;

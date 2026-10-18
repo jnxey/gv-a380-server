@@ -359,29 +359,28 @@ export class ShopService {
    * 写入 KTV 门店的时区、营业时间和地址。地址描述同时写回原来的地址文本。
    */
   private fillKtvShopProfile(shop: Shop, command: SaveShopCommand): void {
-    shop.timeZone = isEmpty(command.timeZone) ? '' : command.timeZone;
+    if (isEmpty(command.timeZone)) {
+      throw new BusinessException('请填写门店时区');
+    }
+    if (isEmpty(command.contactPhone)) {
+      throw new BusinessException('请填写电话');
+    }
+    shop.timeZone = command.timeZone;
     shop.businessHours = this.normalizeBusinessHours(command.businessHours);
     shop.shopAddress = this.normalizeShopAddress(command.shopAddress);
-    if (isEmpty(shop.shopAddress) || isEmpty(shop.shopAddress.addressText)) {
-      shop.address = '';
-      return;
-    }
     shop.address = shop.shopAddress.addressText;
   }
 
   /**
-   * 开始和结束都空时不存营业时间。只填一边，或结束不晚于开始，则拒绝。
+   * 营业时间的开始和结束都必须有，且结束要晚于开始。
    */
-  private normalizeBusinessHours(businessHours: { startTime?: string; endTime?: string } | null | undefined): ShopBusinessHours | null {
-    if (isEmpty(businessHours)) {
-      return null;
+  private normalizeBusinessHours(businessHours: { startTime?: string; endTime?: string } | null | undefined): ShopBusinessHours {
+    const startTime = isEmpty(businessHours) || isEmpty(businessHours.startTime) ? '' : businessHours.startTime;
+    const endTime = isEmpty(businessHours) || isEmpty(businessHours.endTime) ? '' : businessHours.endTime;
+    if (isEmpty(startTime) || isEmpty(endTime)) {
+      throw new BusinessException('请填写营业时间');
     }
-    const startTime = isEmpty(businessHours.startTime) ? '' : businessHours.startTime;
-    const endTime = isEmpty(businessHours.endTime) ? '' : businessHours.endTime;
-    if (isEmpty(startTime) && isEmpty(endTime)) {
-      return null;
-    }
-    if (isEmpty(startTime) || isEmpty(endTime) || endTime <= startTime) {
+    if (endTime <= startTime) {
       throw new BusinessException('结束时间必须晚于开始时间');
     }
     return {
@@ -391,17 +390,14 @@ export class ShopService {
   }
 
   /**
-   * 经纬度和描述都空时不存门店地址。
+   * 门店位置必须有经纬度。地址描述可以空。
    */
-  private normalizeShopAddress(shopAddress: { longitude?: number | null; latitude?: number | null; addressText?: string } | null | undefined): ShopAddressLocation | null {
-    if (isEmpty(shopAddress)) {
-      return null;
-    }
-    const addressText = isEmpty(shopAddress.addressText) ? '' : shopAddress.addressText;
-    const longitude = isEmpty(shopAddress.longitude) ? null : shopAddress.longitude;
-    const latitude = isEmpty(shopAddress.latitude) ? null : shopAddress.latitude;
-    if (isEmpty(addressText) && isEmpty(longitude) && isEmpty(latitude)) {
-      return null;
+  private normalizeShopAddress(shopAddress: { longitude?: number | null; latitude?: number | null; addressText?: string } | null | undefined): ShopAddressLocation {
+    const addressText = isEmpty(shopAddress) || isEmpty(shopAddress.addressText) ? '' : shopAddress.addressText;
+    const longitude = isEmpty(shopAddress) || isEmpty(shopAddress.longitude) ? null : shopAddress.longitude;
+    const latitude = isEmpty(shopAddress) || isEmpty(shopAddress.latitude) ? null : shopAddress.latitude;
+    if (isEmpty(longitude) || isEmpty(latitude)) {
+      throw new BusinessException('请选择门店位置');
     }
     return {
       longitude,
