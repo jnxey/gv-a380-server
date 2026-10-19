@@ -300,6 +300,7 @@ export const AuthorizationScheme = {
 export const MiniappSignType = {
   MINIAPP_SIGN: 'MP_SIGN',
   USER_QUERY: 'U_Q',
+  PAY_RECHARGE: 'P_R',
 } as const;
 
 /**

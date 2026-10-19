@@ -2,7 +2,11 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto';
 import { AesGcmSetting, MiniappSignField, MiniappSignType } from '../constants';
+import { BusinessException } from '../exceptions/business.exception';
 import { isEmpty, isNumber, isObject } from '../tools';
+
+/** 付款二维码时间戳允许偏离的毫秒数，和聊天服务签发时限一致。 */
+const PAY_QR_MAX_SKEW_MILLISECONDS = 5 * 60 * 1000;
 
 /** 公司服务集群公用 AES 密钥。与聊天服务端使用同一项。 */
 const APP_CRYPTO_AES_SECRET = 'APP_CRYPTO_AES_SECRET';
@@ -71,6 +75,43 @@ export class MiniappSignService {
       contact,
       nickname,
     };
+  }
+
+  /**
+   * 解开付款/充值二维码，返回里面的用户名。
+   * 类型必须是付款码，时间戳偏离超过 5 分钟算无效。解不开时不返回明文。
+   */
+  readPayRechargeUsername(cipherText: string): string {
+    let decryptedText = '';
+    try {
+      decryptedText = this.decryptCipherText(cipherText);
+    } catch {
+      throw new BusinessException('二维码无效');
+    }
+    let parsedPayload: unknown;
+    try {
+      parsedPayload = JSON.parse(decryptedText);
+    } catch {
+      throw new BusinessException('二维码无效');
+    }
+    if (isObject(parsedPayload) !== true) {
+      throw new BusinessException('二维码无效');
+    }
+    if (parsedPayload.type !== MiniappSignType.PAY_RECHARGE) {
+      throw new BusinessException('二维码无效');
+    }
+    const username = parsedPayload.cot;
+    if (typeof username !== 'string' || isEmpty(username)) {
+      throw new BusinessException('二维码无效');
+    }
+    const timestamp = parsedPayload.tsp;
+    if (!isNumber(timestamp)) {
+      throw new BusinessException('二维码无效');
+    }
+    if (Math.abs(Date.now() - Number(timestamp)) > PAY_QR_MAX_SKEW_MILLISECONDS) {
+      throw new BusinessException('二维码无效');
+    }
+    return username;
   }
 
   /**

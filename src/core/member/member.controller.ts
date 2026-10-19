@@ -7,6 +7,7 @@ import { RequireModule, RequirePermission, RequiresShop } from '../../common/dec
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { LoginAccountContext } from '../../common/interfaces/login-account-context';
 import { isEmpty } from '../../common/tools';
+import { MiniappSignService } from '../../common/crypto/miniapp-sign.service';
 import { FinanceBillService } from '../finance/finance-bill.service';
 import { MemberBalanceService } from './member-balance.service';
 import { ChatUserClient } from './chat-user.client';
@@ -60,6 +61,15 @@ export class RechargeDto {
 }
 
 /**
+ * 付款/充值二维码密文。
+ */
+export class PayQrDto {
+  @IsString()
+  @IsNotEmpty()
+  cipherText: string;
+}
+
+/**
  * 小程序流水查询。
  */
 export class MemberBillQueryDto extends PageQueryDto {
@@ -79,6 +89,7 @@ export class MemberAdminController {
     private readonly memberQueryService: MemberQueryService,
     private readonly memberBalanceService: MemberBalanceService,
     private readonly chatUserClient: ChatUserClient,
+    private readonly miniappSignService: MiniappSignService,
   ) {}
 
   /**
@@ -117,6 +128,16 @@ export class MemberAdminController {
     const chatUserProfile = await this.chatUserClient.findByKeyword(syncMemberProfileDto.username);
     const contact = this.chatUserClient.resolveContact(chatUserProfile.phone, chatUserProfile.email);
     return this.memberQueryService.syncProfile(syncMemberProfileDto.username, chatUserProfile.nickname, contact);
+  }
+
+  /**
+   * 解开付款/充值二维码，只返回用户名。
+   */
+  @Post('pay-qr')
+  @RequirePermission(PermissionCode.MEMBER_RECHARGE)
+  readPayQr(@Body() payQrDto: PayQrDto) {
+    const username = this.miniappSignService.readPayRechargeUsername(payQrDto.cipherText);
+    return { username };
   }
 
   /**
