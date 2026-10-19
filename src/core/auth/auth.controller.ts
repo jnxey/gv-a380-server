@@ -60,6 +60,14 @@ export class AuthController {
   }
 
   /**
+   * 为仍在使用的后台账号换一张访问令牌。
+   */
+  @Post('refresh')
+  refresh(@CurrentAccount() loginAccountContext: LoginAccountContext) {
+    return this.authService.renewAccessToken(loginAccountContext);
+  }
+
+  /**
    * 当前登录人资料与绑定门店。
    */
   @Get('profile')

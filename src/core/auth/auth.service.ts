@@ -72,6 +72,25 @@ export class AuthService {
   }
 
   /**
+   * 为仍在使用的后台账号再签一张访问令牌。旧令牌保持到原来的过期时间。
+   */
+  async renewAccessToken(loginAccountContext: LoginAccountContext): Promise<{ accessToken: string }> {
+    // 1. 只给仍持有后台令牌的账号续期
+    if (loginAccountContext.accountType !== AccountType.SYS_USER || isEmpty(loginAccountContext.tokenId)) {
+      throw new UnauthorizedException('登录已失效');
+    }
+    // 2. 新的令牌编号，有效期仍按现有 JWT 配置
+    const accessToken = await this.jwtService.signAsync(
+      {
+        sub: loginAccountContext.accountId,
+        accountType: AccountType.SYS_USER,
+      },
+      { jwtid: randomUUID() },
+    );
+    return { accessToken };
+  }
+
+  /**
    * 把当前访问令牌的 jti 放入 Redis，直到原过期时间，实现登出立即失效。
    */
   async logout(loginAccountContext: LoginAccountContext): Promise<void> {
