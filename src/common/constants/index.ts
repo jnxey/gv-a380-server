@@ -302,6 +302,13 @@ export const MiniappSignType = {
 } as const;
 
 /**
+ * 小程序身份签名明文里的附加字段名。与聊天服务端签发的字段一致。
+ */
+export const MiniappSignField = {
+  CONTACT: 'contact',
+} as const;
+
+/**
  * AES-GCM 密文布局。12 字节 IV 在前，16 字节认证标签在后。
  */
 export const AesGcmSetting = {

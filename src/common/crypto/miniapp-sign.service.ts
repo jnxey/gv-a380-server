@@ -1,7 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createDecipheriv, createHash } from 'crypto';
-import { AesGcmSetting, MiniappSignType } from '../constants';
+import { AesGcmSetting, MiniappSignField, MiniappSignType } from '../constants';
 import { isEmpty, isNumber, isObject } from '../tools';
 
 /** 公司服务集群公用 AES 密钥。与聊天服务端使用同一项。 */
@@ -13,6 +13,7 @@ const APP_CRYPTO_AES_SECRET = 'APP_CRYPTO_AES_SECRET';
 export interface MiniappSignContent {
   username: string;
   expireAtMilliseconds: number;
+  contact: string | null;
 }
 
 /**
@@ -38,7 +39,7 @@ export class MiniappSignService {
     if (isObject(parsedPayload) !== true) {
       throw new UnauthorizedException('登录已失效');
     }
-    const signPayload = parsedPayload as { cot?: unknown; type?: unknown; exp?: unknown };
+    const signPayload = parsedPayload as Record<string, unknown>;
     // 2. 类型必须是小程序身份签名
     if (signPayload.type !== MiniappSignType.MINIAPP_SIGN) {
       throw new UnauthorizedException('登录已失效');
@@ -57,9 +58,13 @@ export class MiniappSignService {
     if (expireAt <= serverNowMilliseconds) {
       throw new UnauthorizedException('登录已失效');
     }
+    // 4. 旧签名没有联系方式时留空，避免覆盖已经保存的值
+    const contactText = signPayload[MiniappSignField.CONTACT];
+    const contact = typeof contactText === 'string' ? contactText : null;
     return {
       username,
       expireAtMilliseconds: expireAt,
+      contact,
     };
   }
 

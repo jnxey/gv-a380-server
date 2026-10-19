@@ -13,6 +13,9 @@ export class MemberAccount {
   @Column({ type: 'varchar', length: 64 })
   username: string;
 
+  @Column({ type: 'varchar', length: 256, default: '' })
+  contact: string;
+
   @Column({ type: 'decimal', precision: 12, scale: 2, transformer: decimalTransformer })
   balance: string;
 

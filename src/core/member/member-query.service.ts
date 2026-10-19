@@ -31,19 +31,20 @@ export class MemberQueryService {
   }
 
   /**
-   * 按用户名拿到启用中的余额账户。没有就建一条余额为 0 的账户。
-   * 多个请求同时进来时，唯一键只允许建成一条，后来的请求再查一次沿用已有记录。
+   * 按用户名拿到启用中的余额账户。没有就建一条余额为 0 的账户，并写入联系方式。
+   * 多个请求同时进来时，唯一键只允许建成一条，后来的请求再查一次并补上联系方式。
    */
-  async ensureEnabledByUsername(username: string): Promise<MemberAccount> {
-    // 1. 已有账户时直接判断状态，停用的不另建
+  async ensureEnabledByUsername(username: string, contact: string | null): Promise<MemberAccount> {
+    // 1. 已有账户时同步联系方式。停用的不另建
     const existedMemberAccount = await this.findByUsername(username);
     if (isEmpty(existedMemberAccount) !== true) {
-      return this.assertMemberEnabled(existedMemberAccount);
+      return this.syncContact(this.assertMemberEnabled(existedMemberAccount), contact);
     }
-    // 2. 没有账户时插入。用户名、余额 0、启用
+    // 2. 没有账户时插入。用户名、联系方式、余额 0、启用
     try {
       const memberAccount = new MemberAccount();
       memberAccount.username = username;
+      memberAccount.contact = contact === null ? '' : contact;
       memberAccount.balance = toMoneyString(NumberBoundary.ZERO);
       memberAccount.status = RecordStatus.ENABLED;
       return await this.memberAccountRepository.save(memberAccount);
@@ -52,12 +53,23 @@ export class MemberQueryService {
         throw error;
       }
     }
-    // 3. 唯一键冲突说明别的请求已经建成，再查一次沿用
+    // 3. 唯一键冲突说明别的请求已经建成，再查一次并补上联系方式
     const createdMemberAccount = await this.findByUsername(username);
     if (isEmpty(createdMemberAccount)) {
       throw new UnauthorizedException('会员不存在或已停用');
     }
-    return this.assertMemberEnabled(createdMemberAccount);
+    return this.syncContact(this.assertMemberEnabled(createdMemberAccount), contact);
+  }
+
+  /**
+   * 签名里带了联系方式且和库里不同时更新。旧签名没有该字段时不覆盖。
+   */
+  private async syncContact(memberAccount: MemberAccount, contact: string | null): Promise<MemberAccount> {
+    if (contact === null || memberAccount.contact === contact) {
+      return memberAccount;
+    }
+    memberAccount.contact = contact;
+    return this.memberAccountRepository.save(memberAccount);
   }
 
   /**
@@ -121,12 +133,14 @@ export class MemberQueryService {
   toMemberView(memberAccount: MemberAccount): {
     memberId: string;
     username: string;
+    contact: string;
     balance: string;
     status: string;
   } {
     return {
       memberId: toIdentifier(memberAccount.id),
       username: memberAccount.username,
+      contact: memberAccount.contact,
       balance: memberAccount.balance,
       status: memberAccount.status,
     };
