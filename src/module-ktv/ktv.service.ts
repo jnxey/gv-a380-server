@@ -102,8 +102,7 @@ export interface KtvBookingOrderView {
   shopId: string;
   orderNo: string;
   memberId: string;
-  memberName: string;
-  mobile: string;
+  username: string;
   roomTypeId: string;
   roomTypeName: string;
   roomId: string;
@@ -1045,8 +1044,7 @@ export class KtvService {
         shopId: toIdentifier(bookingOrder.shopId),
         orderNo: bookingOrder.orderNo,
         memberId: toIdentifier(bookingOrder.memberId),
-        memberName: isEmpty(memberAccount) ? '' : memberAccount.memberName,
-        mobile: isEmpty(memberAccount) ? '' : memberAccount.mobile,
+        username: isEmpty(memberAccount) ? '' : memberAccount.username,
         roomTypeId: toIdentifier(bookingOrder.roomTypeId),
         roomTypeName: isEmpty(ktvRoomType) ? '' : ktvRoomType.typeName,
         roomId: toIdentifier(bookingOrder.roomId),

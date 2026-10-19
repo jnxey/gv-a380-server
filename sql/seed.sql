@@ -118,8 +118,8 @@ INSERT INTO sys_user_shop (id, user_id, shop_id) VALUES
 (10, 5, 3),
 (11, 6, 3);
 
-INSERT INTO member_account (id, member_no, member_name, mobile, balance, points, status, shop_id) VALUES
-(1, 'M3800001', '测试会员', '13800000000', 1000.00, 0, 'ENABLED', 1);
+INSERT INTO member_account (id, username, balance, status) VALUES
+(1, 'M3800001', 1000.00, 'ENABLED');
 
 INSERT INTO ktv_room_type (id, shop_id, type_name, hourly_price, status, sort_order) VALUES
 (1, 1, '小包', 200.00, 'ENABLED', 2),

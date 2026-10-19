@@ -66,13 +66,10 @@ export class AuthAccountLoader {
   }
 
   /**
-   * 按会员号加载启用中的会员。小程序签名没有 jti，不进入登出黑名单。
+   * 按聊天用户名加载余额账户。没有就建一条。小程序签名没有 jti，不进入登出黑名单。
    */
-  async loadMemberByMemberNo(memberNo: string, expireAtMilliseconds: number): Promise<LoginAccountContext> {
-    const memberAccount = await this.memberQueryService.findByMemberNo(memberNo);
-    if (isEmpty(memberAccount) || memberAccount.status !== RecordStatus.ENABLED) {
-      throw new UnauthorizedException('会员不存在或已停用');
-    }
+  async loadMemberByUsername(username: string, expireAtMilliseconds: number): Promise<LoginAccountContext> {
+    const memberAccount = await this.memberQueryService.ensureEnabledByUsername(username);
     const tokenExpiredAt = Math.floor(expireAtMilliseconds / TimeSpan.MILLISECONDS_PER_SECOND);
     return {
       accountId: toIdentifier(memberAccount.id),

@@ -2,7 +2,7 @@ import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateCol
 import { decimalTransformer } from '../../common/tools/column';
 
 /**
- * A380 会员账户。余额集团通用，shopId 只表示开户门店。
+ * A380 余额账户。人在聊天 App，这里只挂用户名、余额和状态。
  * 业务模块禁止注入本实体的 Repository 去改余额。
  */
 @Entity('member_account')
@@ -10,26 +10,14 @@ export class MemberAccount {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
   id: string;
 
-  @Column({ type: 'varchar', length: 32 })
-  memberNo: string;
-
   @Column({ type: 'varchar', length: 64 })
-  memberName: string;
-
-  @Column({ type: 'varchar', length: 32 })
-  mobile: string;
+  username: string;
 
   @Column({ type: 'decimal', precision: 12, scale: 2, transformer: decimalTransformer })
   balance: string;
 
-  @Column({ type: 'int', default: 0 })
-  points: number;
-
   @Column({ type: 'varchar', length: 16 })
   status: string;
-
-  @Column({ type: 'bigint', unsigned: true })
-  shopId: string;
 
   @CreateDateColumn({ type: 'datetime' })
   createdAt: string;

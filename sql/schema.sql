@@ -139,25 +139,18 @@ CREATE TABLE sys_user_shop (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='后台用户与门店绑定';
 
 -- ----------------------------
--- core：A380 会员。余额集团通用，shop_id 仅表示开户门店
+-- core：A380 余额账户。人在聊天 App，这里只挂用户名、余额和状态
 -- ----------------------------
 CREATE TABLE member_account (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
-  member_no VARCHAR(32) NOT NULL COMMENT '会员编号',
-  member_name VARCHAR(64) NOT NULL COMMENT '会员姓名',
-  mobile VARCHAR(32) NOT NULL COMMENT '手机号',
+  username VARCHAR(64) NOT NULL COMMENT '聊天用户名',
   balance DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT '余额',
-  points INT NOT NULL DEFAULT 0 COMMENT '积分',
   status VARCHAR(16) NOT NULL COMMENT '状态：ENABLED、DISABLED',
-  shop_id BIGINT UNSIGNED NOT NULL COMMENT '开户门店ID',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
-  UNIQUE KEY uk_member_account_member_no (member_no),
-  UNIQUE KEY uk_member_account_mobile (mobile),
-  KEY idx_member_account_shop_id (shop_id),
-  CONSTRAINT fk_member_account_shop FOREIGN KEY (shop_id) REFERENCES shop (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='A380会员账户';
+  UNIQUE KEY uk_member_account_username (username)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='A380余额账户';
 
 CREATE TABLE member_point_log (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',

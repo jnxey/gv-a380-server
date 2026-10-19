@@ -6,17 +6,14 @@ import {
   FinanceBizType,
   FinanceDirection,
   NumberBoundary,
-  PointChangeType,
-  PointRule,
   RecordStatus,
   BusinessNoPrefix,
 } from '../../common/constants';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { ShopContext } from '../../common/context/shop-context';
-import { calculateEarnedPoints, createBusinessNo, isEmpty, isPositiveMoney, toIdentifier, toMoneyString } from '../../common/tools';
+import { createBusinessNo, isEmpty, isPositiveMoney, toIdentifier, toMoneyString } from '../../common/tools';
 import { FinanceBill } from '../finance/finance-bill.entity';
 import { MemberAccount } from './member-account.entity';
-import { MemberPointLog } from './member-point-log.entity';
 
 /**
  * 余额变动命令。必须带着调用方的 EntityManager，以便加入同一个事务。
@@ -177,32 +174,10 @@ export class MemberBalanceService {
     const balanceAfterText = toMoneyString(balanceAfter);
     memberAccount.balance = balanceAfterText;
 
-    // 3. 仅消费扣款按金额向下取整记积分，充值和退款不改积分
-    let earnedPoints: number = NumberBoundary.ZERO;
-    if (command.direction === FinanceDirection.OUT) {
-      earnedPoints = calculateEarnedPoints(changeAmount, PointRule.EARN_PER_YUAN);
-      if (earnedPoints > NumberBoundary.ZERO) {
-        const pointsBefore = memberAccount.points;
-        const pointsAfter = pointsBefore + earnedPoints;
-        memberAccount.points = pointsAfter;
-        const memberPointLog = new MemberPointLog();
-        memberPointLog.memberId = toIdentifier(memberAccount.id);
-        memberPointLog.shopId = command.shopId;
-        memberPointLog.changeType = PointChangeType.EARN;
-        memberPointLog.changePoints = earnedPoints;
-        memberPointLog.pointsBefore = pointsBefore;
-        memberPointLog.pointsAfter = pointsAfter;
-        memberPointLog.bizType = command.bizType;
-        memberPointLog.bizOrderNo = command.bizOrderNo;
-        memberPointLog.remark = command.remark;
-        await command.entityManager.getRepository(MemberPointLog).save(memberPointLog);
-      }
-    }
-
-    // 4. 回写会员余额。这是 member_account 唯一的更新位置
+    // 3. 回写会员余额。这是 member_account 唯一的更新位置
     await command.entityManager.getRepository(MemberAccount).save(memberAccount);
 
-    // 5. 写入统一财务流水，保留变动前后余额
+    // 4. 写入统一财务流水，保留变动前后余额
     const financeBill = new FinanceBill();
     financeBill.billNo = createBusinessNo(BusinessNoPrefix.FINANCE_BILL);
     financeBill.memberId = toIdentifier(memberAccount.id);

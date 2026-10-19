@@ -11,7 +11,7 @@ const APP_CRYPTO_AES_SECRET = 'APP_CRYPTO_AES_SECRET';
  * 解开后的小程序身份签名。用户名对应会员号，过期时间是毫秒时间戳。
  */
 export interface MiniappSignContent {
-  memberNo: string;
+  username: string;
   expireAtMilliseconds: number;
 }
 
@@ -43,9 +43,9 @@ export class MiniappSignService {
     if (signPayload.type !== MiniappSignType.MINIAPP_SIGN) {
       throw new UnauthorizedException('登录已失效');
     }
-    // 3. 用户名作为会员号，过期时间必须晚于当前毫秒时间
-    const memberNo = signPayload.cot;
-    if (typeof memberNo !== 'string' || isEmpty(memberNo)) {
+    // 3. 用户名不能为空，过期时间必须晚于当前毫秒时间
+    const username = signPayload.cot;
+    if (typeof username !== 'string' || isEmpty(username)) {
       throw new UnauthorizedException('登录已失效');
     }
     const expireAtMilliseconds = signPayload.exp;
@@ -58,7 +58,7 @@ export class MiniappSignService {
       throw new UnauthorizedException('登录已失效');
     }
     return {
-      memberNo,
+      username,
       expireAtMilliseconds: expireAt,
     };
   }
