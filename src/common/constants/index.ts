@@ -418,10 +418,10 @@ export const PasswordSetting = {
 } as const;
 
 /**
- * JWT 默认有效秒数。配置缺失时使用。
+ * JWT 默认有效秒数。配置缺失时使用，6 小时。
  */
 export const JwtSetting = {
-  DEFAULT_EXPIRES_SECONDS: 7200,
+  DEFAULT_EXPIRES_SECONDS: 6 * 60 * 60,
 } as const;
 
 /**
