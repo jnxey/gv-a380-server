@@ -306,6 +306,7 @@ export const MiniappSignType = {
  */
 export const MiniappSignField = {
   CONTACT: 'contact',
+  NICKNAME: 'nickname',
 } as const;
 
 /**

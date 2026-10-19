@@ -68,8 +68,8 @@ export class AuthAccountLoader {
   /**
    * 按聊天用户名加载余额账户。没有就建一条。小程序签名没有 jti，不进入登出黑名单。
    */
-  async loadMemberByUsername(username: string, contact: string | null, expireAtMilliseconds: number): Promise<LoginAccountContext> {
-    const memberAccount = await this.memberQueryService.ensureEnabledByUsername(username, contact);
+  async loadMemberByUsername(username: string, contact: string | null, nickname: string | null, expireAtMilliseconds: number): Promise<LoginAccountContext> {
+    const memberAccount = await this.memberQueryService.ensureEnabledByUsername(username, contact, nickname);
     const tokenExpiredAt = Math.floor(expireAtMilliseconds / TimeSpan.MILLISECONDS_PER_SECOND);
     return {
       accountId: toIdentifier(memberAccount.id),

@@ -83,7 +83,7 @@ export class JwtAuthGuard implements CanActivate {
     // 2. 解密并核对类型和过期时间
     const miniappSign = this.miniappSignService.readMiniappSign(cipherText);
     // 3. 按会员号加载启用中的会员
-    request.loginAccountContext = await this.authAccountLoader.loadMemberByUsername(miniappSign.username, miniappSign.contact, miniappSign.expireAtMilliseconds);
+    request.loginAccountContext = await this.authAccountLoader.loadMemberByUsername(miniappSign.username, miniappSign.contact, miniappSign.nickname, miniappSign.expireAtMilliseconds);
     return true;
   }
 

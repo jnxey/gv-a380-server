@@ -14,6 +14,7 @@ export interface MiniappSignContent {
   username: string;
   expireAtMilliseconds: number;
   contact: string | null;
+  nickname: string | null;
 }
 
 /**
@@ -61,10 +62,14 @@ export class MiniappSignService {
     // 4. 旧签名没有联系方式时留空，避免覆盖已经保存的值
     const contactText = signPayload[MiniappSignField.CONTACT];
     const contact = typeof contactText === 'string' ? contactText : null;
+    // 5. 旧签名没有昵称时留空，避免覆盖已经保存的值
+    const nicknameText = signPayload[MiniappSignField.NICKNAME];
+    const nickname = typeof nicknameText === 'string' ? nicknameText : null;
     return {
       username,
       expireAtMilliseconds: expireAt,
       contact,
+      nickname,
     };
   }
 

@@ -13,6 +13,9 @@ export class MemberAccount {
   @Column({ type: 'varchar', length: 64 })
   username: string;
 
+  @Column({ type: 'varchar', length: 128, default: '' })
+  nickname: string;
+
   @Column({ type: 'varchar', length: 256, default: '' })
   contact: string;
 
