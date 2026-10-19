@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, In, Like, Repository } from 'typeorm';
 import { NumberBoundary, RecordStatus } from '../../common/constants';
+import { BusinessException } from '../../common/exceptions/business.exception';
 import { PageResult } from '../../common/interfaces/page-result';
 import { isDuplicateEntryError, isEmpty, resolvePage, toIdentifier, toMoneyString } from '../../common/tools';
 import { MemberAccount } from './member-account.entity';
@@ -109,11 +110,25 @@ export class MemberQueryService {
   }
 
   /**
-   * 后台按用户名分页查询。余额集团通用，这里不做门店截断。
+   * 按聊天用户资料写回昵称和联系方式。空字符串也会覆盖。账户不存在时拒绝。
    */
-  async pageMembers(keyword: string, pageValue: unknown, pageSizeValue: unknown): Promise<PageResult<MemberAccount>> {
+  async syncProfile(username: string, nickname: string, contact: string): Promise<ReturnType<MemberQueryService['toMemberView']>> {
+    const memberAccount = await this.findByUsername(username);
+    if (isEmpty(memberAccount)) {
+      throw new BusinessException('会员不存在');
+    }
+    memberAccount.nickname = nickname;
+    memberAccount.contact = contact;
+    const savedMemberAccount = await this.memberAccountRepository.save(memberAccount);
+    return this.toMemberView(savedMemberAccount);
+  }
+
+  /**
+   * 后台按用户名分页查询。传入精确用户名时不再模糊匹配。余额集团通用，这里不做门店截断。
+   */
+  async pageMembers(keyword: string, username: string, pageValue: unknown, pageSizeValue: unknown): Promise<PageResult<MemberAccount>> {
     const pageResult = resolvePage(pageValue, pageSizeValue);
-    const whereCondition = this.buildKeywordWhere(keyword);
+    const whereCondition = this.buildMemberWhere(keyword, username);
     const [list, total] = await this.memberAccountRepository.findAndCount({
       where: whereCondition,
       order: { id: 'DESC' },
@@ -126,6 +141,17 @@ export class MemberQueryService {
       page: pageResult.page,
       pageSize: pageResult.pageSize,
     };
+  }
+
+  /**
+   * 有精确用户名时只匹配这一条。否则按关键字模糊匹配用户名。
+   */
+  private buildMemberWhere(keyword: string, username: string): FindOptionsWhere<MemberAccount> | undefined {
+    const cleanedUsername = username.trim();
+    if (isEmpty(cleanedUsername) !== true) {
+      return { username: cleanedUsername };
+    }
+    return this.buildKeywordWhere(keyword);
   }
 
   /**

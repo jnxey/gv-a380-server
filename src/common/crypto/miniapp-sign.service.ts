@@ -1,6 +1,6 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createDecipheriv, createHash } from 'crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto';
 import { AesGcmSetting, MiniappSignField, MiniappSignType } from '../constants';
 import { isEmpty, isNumber, isObject } from '../tools';
 
@@ -71,6 +71,25 @@ export class MiniappSignService {
       contact,
       nickname,
     };
+  }
+
+  /**
+   * 签发一张发给聊天服务的查询令牌。
+   * 明文含类型、查询词和当前毫秒时间。聊天服务只接受 5 分钟内的令牌。
+   */
+  createServiceToken(content: string, signType: string): string {
+    // 1. 类型、查询词和时间戳写进同一段明文
+    const plaintext = JSON.stringify({
+      type: signType,
+      cot: content,
+      tsp: Date.now(),
+    });
+    // 2. 按 IV、密文、认证标签拼成 Base64
+    const initializationVector = randomBytes(AesGcmSetting.IV_LENGTH);
+    const cipher = createCipheriv('aes-256-gcm', this.readAesKey(), initializationVector);
+    const cipherBytes = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+    const authenticationTag = cipher.getAuthTag();
+    return Buffer.concat([initializationVector, cipherBytes, authenticationTag]).toString('base64');
   }
 
   /**

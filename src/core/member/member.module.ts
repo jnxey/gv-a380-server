@@ -1,7 +1,9 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { FinanceModule } from '../finance/finance.module';
 import { FinanceBill } from '../finance/finance-bill.entity';
+import { AuthModule } from '../auth/auth.module';
+import { ChatUserClient } from './chat-user.client';
 import { MemberAccount } from './member-account.entity';
 import { MemberAdminController, MemberAppController } from './member.controller';
 import { MemberBalanceService } from './member-balance.service';
@@ -12,9 +14,9 @@ import { MemberQueryService } from './member-query.service';
  * 会员中台。只导出服务，不把 member_account 仓储暴露给业务模块。
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([MemberAccount, MemberPointLog, FinanceBill]), FinanceModule],
+  imports: [forwardRef(() => AuthModule), TypeOrmModule.forFeature([MemberAccount, MemberPointLog, FinanceBill]), FinanceModule],
   controllers: [MemberAdminController, MemberAppController],
-  providers: [MemberBalanceService, MemberQueryService],
+  providers: [MemberBalanceService, MemberQueryService, ChatUserClient],
   exports: [MemberBalanceService, MemberQueryService],
 })
 export class MemberModule {}
