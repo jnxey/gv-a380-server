@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtSetting } from '../../common/constants';
+import { MiniappSignService } from '../../common/crypto/miniapp-sign.service';
 import { isEmpty, isNumber } from '../../common/tools';
 import { MemberModule } from '../member/member.module';
 import { RbacModule } from '../rbac/rbac.module';
@@ -37,7 +38,7 @@ import { AuthService } from './auth.service';
     }),
   ],
   controllers: [AuthController, AppAuthController],
-  providers: [AuthService, AuthAccountLoader],
-  exports: [AuthService, AuthAccountLoader],
+  providers: [AuthService, AuthAccountLoader, MiniappSignService],
+  exports: [AuthService, AuthAccountLoader, MiniappSignService],
 })
 export class AuthModule {}

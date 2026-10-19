@@ -23,6 +23,13 @@ export class MemberQueryService {
   }
 
   /**
+   * 按会员号读取会员。小程序身份签名里的用户名对应会员号。
+   */
+  async findByMemberNo(memberNo: string): Promise<MemberAccount | null> {
+    return this.memberAccountRepository.findOne({ where: { memberNo } });
+  }
+
+  /**
    * 按主键批量读取会员，用于订单列表展示姓名。
    */
   async findByIdList(memberIdList: string[]): Promise<MemberAccount[]> {

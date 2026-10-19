@@ -1,7 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { AccountType, RecordStatus } from '../../common/constants';
+import { AccountType, RecordStatus, TimeSpan } from '../../common/constants';
 import { LoginAccountContext } from '../../common/interfaces/login-account-context';
 import { isEmpty, isNumber, toIdentifier } from '../../common/tools';
 import { MemberQueryService } from '../member/member-query.service';
@@ -61,6 +61,26 @@ export class AuthAccountLoader {
       permissionCodeList: [],
       boundShopIdList: [],
       tokenId,
+      tokenExpiredAt,
+    };
+  }
+
+  /**
+   * 按会员号加载启用中的会员。小程序签名没有 jti，不进入登出黑名单。
+   */
+  async loadMemberByMemberNo(memberNo: string, expireAtMilliseconds: number): Promise<LoginAccountContext> {
+    const memberAccount = await this.memberQueryService.findByMemberNo(memberNo);
+    if (isEmpty(memberAccount) || memberAccount.status !== RecordStatus.ENABLED) {
+      throw new UnauthorizedException('会员不存在或已停用');
+    }
+    const tokenExpiredAt = Math.floor(expireAtMilliseconds / TimeSpan.MILLISECONDS_PER_SECOND);
+    return {
+      accountId: toIdentifier(memberAccount.id),
+      accountType: AccountType.MEMBER,
+      roleList: [],
+      permissionCodeList: [],
+      boundShopIdList: [],
+      tokenId: '',
       tokenExpiredAt,
     };
   }

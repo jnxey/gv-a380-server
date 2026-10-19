@@ -295,6 +295,21 @@ export const AuthorizationScheme = {
 } as const;
 
 /**
+ * 小程序身份签名明文里的 type。与聊天服务端签发的类型一致。
+ */
+export const MiniappSignType = {
+  MINIAPP_SIGN: 'MP_SIGN',
+} as const;
+
+/**
+ * AES-GCM 密文布局。12 字节 IV 在前，16 字节认证标签在后。
+ */
+export const AesGcmSetting = {
+  IV_LENGTH: 12,
+  TAG_LENGTH: 16,
+} as const;
+
+/**
  * Redis 键前缀。只用于 JWT 黑名单。
  */
 export const RedisKey = {

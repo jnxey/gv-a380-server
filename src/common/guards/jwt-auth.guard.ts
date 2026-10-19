@@ -5,6 +5,7 @@ import { Request } from 'express';
 import Redis from 'ioredis';
 import { AccessTokenPayload, AuthAccountLoader } from '../../core/auth/auth-account.loader';
 import { AccountType, AuthorizationScheme, MetadataKey, RedisKey, RequestPathPrefix } from '../constants';
+import { MiniappSignService } from '../crypto/miniapp-sign.service';
 import { LoginAccountContext } from '../interfaces/login-account-context';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { isEmpty } from '../tools';
@@ -17,7 +18,7 @@ export interface AuthenticatedRequest extends Request {
 }
 
 /**
- * 全局 JWT 守卫。业务控制器不再自行校验 token。
+ * 全局登录守卫。/app 使用小程序身份签名，/admin 使用 JWT。业务控制器不再自行校验。
  */
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -25,12 +26,13 @@ export class JwtAuthGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly jwtService: JwtService,
     private readonly authAccountLoader: AuthAccountLoader,
+    private readonly miniappSignService: MiniappSignService,
     @Inject(REDIS_CLIENT)
     private readonly redisClient: Redis,
   ) {}
 
   /**
-   * 校验签名、黑名单，并限制会员令牌与后台令牌不能串接口。
+   * /app 按小程序身份签名识别会员。其余接口校验 JWT、黑名单，并限制账号不能串接口。
    */
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(MetadataKey.PUBLIC, [context.getHandler(), context.getClass()]);
@@ -38,6 +40,9 @@ export class JwtAuthGuard implements CanActivate {
       return true;
     }
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
+    if (request.path.startsWith(RequestPathPrefix.APP)) {
+      return this.activateByMiniappSign(request);
+    }
     // 1. 取出 Bearer token
     const accessToken = this.extractBearerToken(request);
     if (isEmpty(accessToken)) {
@@ -63,6 +68,22 @@ export class JwtAuthGuard implements CanActivate {
     this.assertAccountTypeMatchesPath(payload.accountType, request.path);
     // 5. 加载账号、角色、权限和绑定门店，供后续守卫使用
     request.loginAccountContext = await this.authAccountLoader.load(payload);
+    return true;
+  }
+
+  /**
+   * 用小程序身份签名识别会员。签名里的用户名对应会员号。
+   */
+  private async activateByMiniappSign(request: AuthenticatedRequest): Promise<boolean> {
+    // 1. 取出 Bearer 密文
+    const cipherText = this.extractBearerToken(request);
+    if (isEmpty(cipherText)) {
+      throw new UnauthorizedException('请先登录');
+    }
+    // 2. 解密并核对类型和过期时间
+    const miniappSign = this.miniappSignService.readMiniappSign(cipherText);
+    // 3. 按会员号加载启用中的会员
+    request.loginAccountContext = await this.authAccountLoader.loadMemberByMemberNo(miniappSign.memberNo, miniappSign.expireAtMilliseconds);
     return true;
   }
 
