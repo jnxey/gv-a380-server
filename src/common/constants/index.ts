@@ -233,6 +233,7 @@ export const PermissionCode = {
   KTV_ORDER_VERIFY: 'ktv:order:verify',
   KTV_ORDER_CONSUME: 'ktv:order:consume',
   KTV_ORDER_CANCEL: 'ktv:order:cancel',
+  KTV_DEDUCT: 'ktv:deduct',
   HOTEL_SHOP_QUERY: 'hotel:shop:query',
   HOTEL_SHOP_SAVE: 'hotel:shop:save',
   HOTEL_ROOM_TYPE_QUERY: 'hotel:room-type:query',

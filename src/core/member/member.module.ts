@@ -17,6 +17,6 @@ import { MemberQueryService } from './member-query.service';
   imports: [forwardRef(() => AuthModule), TypeOrmModule.forFeature([MemberAccount, MemberPointLog, FinanceBill]), FinanceModule],
   controllers: [MemberAdminController, MemberAppController],
   providers: [MemberBalanceService, MemberQueryService, ChatUserClient],
-  exports: [MemberBalanceService, MemberQueryService],
+  exports: [MemberBalanceService, MemberQueryService, ChatUserClient],
 })
 export class MemberModule {}

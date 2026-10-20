@@ -29,6 +29,7 @@ import { BusinessException } from '../common/exceptions/business.exception';
 import { PageResult } from '../common/interfaces/page-result';
 import { createBusinessNo, createVerifyCode, isDuplicateEntryError, isEmpty, isNumber, isOneOf, isPositiveMoney, resolvePage, toIdentifier, toMoneyString } from '../common/tools';
 import { MemberBalanceService } from '../core/member/member-balance.service';
+import { ChatUserClient } from '../core/member/chat-user.client';
 import { MemberQueryService } from '../core/member/member-query.service';
 import { NotifyService } from '../core/notify/notify.service';
 import { Shop } from '../core/shop/shop.entity';
@@ -139,6 +140,7 @@ export class KtvService {
     private readonly shopService: ShopService,
     private readonly memberBalanceService: MemberBalanceService,
     private readonly memberQueryService: MemberQueryService,
+    private readonly chatUserClient: ChatUserClient,
     private readonly miniappSignService: MiniappSignService,
     private readonly notifyService: NotifyService,
   ) {}
@@ -348,6 +350,105 @@ export class KtvService {
    */
   async sortRooms(idList: string[]): Promise<void> {
     await this.applySortOrder(this.ktvRoomRepository, KtvRoom, idList, '包厢排序不完整');
+  }
+
+  /**
+   * 按用户名、手机号或邮箱找到余额账户。聊天里没有这个人，或还没有余额账户，都算没有找到会员。
+   */
+  async findMemberByKeyword(keyword: string) {
+    await this.requireEnabledKtvShop();
+    const cleanedKeyword = keyword.trim();
+    if (isEmpty(cleanedKeyword)) {
+      throw new BusinessException('没有找到会员');
+    }
+    let username = '';
+    try {
+      const chatUserProfile = await this.chatUserClient.findByKeyword(cleanedKeyword);
+      username = chatUserProfile.username;
+    } catch (error) {
+      if (this.readBusinessMessage(error) === '未找到该用户') {
+        throw new BusinessException('没有找到会员');
+      }
+      throw error;
+    }
+    return this.requireMemberByUsername(username);
+  }
+
+  /**
+   * 解开付款/充值二维码，再按里面的用户名找到余额账户。
+   */
+  async findMemberByPayQr(cipherText: string) {
+    await this.requireEnabledKtvShop();
+    const username = this.miniappSignService.readPayRechargeUsername(cipherText);
+    return this.requireMemberByUsername(username);
+  }
+
+  /**
+   * 按当前 KTV 门店扣减会员余额，并返回扣完后的会员资料。不关联预订单。
+   */
+  async deductMemberBalance(memberId: string, amount: string | number, remark: string, operatorId: string) {
+    if (!isPositiveMoney(amount)) {
+      throw new BusinessException('扣款金额必须大于0');
+    }
+    const shopId = await this.requireEnabledKtvShop();
+    const cleanedRemark = remark.trim();
+    await this.dataSource.transaction(async (entityManager) => {
+      await this.memberBalanceService.deductBalance({
+        entityManager,
+        memberId,
+        shopId,
+        amount: toMoneyString(amount),
+        bizType: FinanceBizType.KTV_IN_STORE,
+        bizOrderNo: '',
+        operatorId,
+        remark: isEmpty(cleanedRemark) ? 'KTV扣款' : cleanedRemark,
+      });
+    });
+    const memberAccount = await this.memberQueryService.findById(memberId);
+    if (isEmpty(memberAccount)) {
+      throw new BusinessException('没有找到会员');
+    }
+    return this.memberQueryService.toMemberView(memberAccount);
+  }
+
+  /**
+   * 当前请求必须选中一家启用中的 KTV。
+   */
+  private async requireEnabledKtvShop(): Promise<string> {
+    const shopId = ShopContext.getCurrentShopId();
+    if (isEmpty(shopId)) {
+      throw new BusinessException('请选择门店后再扣款');
+    }
+    const shop = await this.shopService.findEnabledShop(shopId, ShopType.KTV);
+    return toIdentifier(shop.id);
+  }
+
+  /**
+   * 按用户名读取余额账户。没有则拒绝。
+   */
+  private async requireMemberByUsername(username: string) {
+    const memberAccount = await this.memberQueryService.findByUsername(username);
+    if (isEmpty(memberAccount)) {
+      throw new BusinessException('没有找到会员');
+    }
+    return this.memberQueryService.toMemberView(memberAccount);
+  }
+
+  /**
+   * 取出业务异常上的中文提示。不是业务异常时返回空。
+   */
+  private readBusinessMessage(error: unknown): string {
+    if (!(error instanceof BusinessException)) {
+      return '';
+    }
+    const response = error.getResponse();
+    if (typeof response === 'string') {
+      return response;
+    }
+    if (typeof response === 'object' && response !== null && 'message' in response && typeof response.message === 'string') {
+      return response.message;
+    }
+    return '';
   }
 
   /**

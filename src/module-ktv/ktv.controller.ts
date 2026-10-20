@@ -131,6 +131,40 @@ export class CreateKtvBookingDto {
 }
 
 /**
+ * 按用户名、手机号或邮箱查找会员。
+ */
+export class KtvMemberKeywordDto {
+  @IsString()
+  @IsNotEmpty()
+  keyword: string;
+}
+
+/**
+ * 付款/充值二维码密文。
+ */
+export class KtvPayQrDto {
+  @IsString()
+  @IsNotEmpty()
+  cipherText: string;
+}
+
+/**
+ * 当前门店扣减会员余额。
+ */
+export class KtvDeductDto {
+  @IsString()
+  @IsNotEmpty()
+  memberId: string;
+
+  @IsNotEmpty()
+  amount: string | number;
+
+  @IsOptional()
+  @IsString()
+  remark?: string;
+}
+
+/**
  * 后台 KTV 接口。查询条件中的门店由 @RequiresShop 注入，不信任请求里的 shopId。
  */
 @Controller('admin/ktv')
@@ -295,6 +329,33 @@ export class KtvAdminController {
   @RequirePermission(PermissionCode.KTV_ORDER_CANCEL)
   cancelBooking(@Param('bookingOrderId') bookingOrderId: string, @CurrentAccount() loginAccountContext: LoginAccountContext) {
     return this.ktvService.cancelBooking(bookingOrderId, loginAccountContext.accountId);
+  }
+
+  /**
+   * 按用户名、手机号或邮箱查找可扣款的会员。
+   */
+  @Get('members')
+  @RequirePermission(PermissionCode.KTV_DEDUCT)
+  findMember(@Query() ktvMemberKeywordDto: KtvMemberKeywordDto) {
+    return this.ktvService.findMemberByKeyword(ktvMemberKeywordDto.keyword);
+  }
+
+  /**
+   * 解开付款/充值二维码，返回对应会员。
+   */
+  @Post('pay-qr')
+  @RequirePermission(PermissionCode.KTV_DEDUCT)
+  findMemberByPayQr(@Body() ktvPayQrDto: KtvPayQrDto) {
+    return this.ktvService.findMemberByPayQr(ktvPayQrDto.cipherText);
+  }
+
+  /**
+   * 按当前 KTV 门店扣减会员余额。
+   */
+  @Post('deduct')
+  @RequirePermission(PermissionCode.KTV_DEDUCT)
+  deduct(@Body() ktvDeductDto: KtvDeductDto, @CurrentAccount() loginAccountContext: LoginAccountContext) {
+    return this.ktvService.deductMemberBalance(ktvDeductDto.memberId, ktvDeductDto.amount, ktvDeductDto.remark || '', loginAccountContext.accountId);
   }
 }
 
