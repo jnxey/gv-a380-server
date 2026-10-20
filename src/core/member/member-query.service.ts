@@ -1,5 +1,6 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import Decimal from 'decimal.js';
 import { FindOptionsWhere, In, Like, Repository } from 'typeorm';
 import { NumberBoundary, RecordStatus } from '../../common/constants';
 import { BusinessException } from '../../common/exceptions/business.exception';
@@ -29,6 +30,17 @@ export class MemberQueryService {
    */
   async findByUsername(username: string): Promise<MemberAccount | null> {
     return this.memberAccountRepository.findOne({ where: { username } });
+  }
+
+  /**
+   * 按聊天用户名读取余额的整数元。没有账户或已停用时返回 0，不新建账户。
+   */
+  async readBalanceYuan(username: string): Promise<number> {
+    const memberAccount = await this.findByUsername(username);
+    if (isEmpty(memberAccount) || memberAccount.status !== RecordStatus.ENABLED) {
+      return NumberBoundary.ZERO;
+    }
+    return new Decimal(memberAccount.balance).trunc().toNumber();
   }
 
   /**

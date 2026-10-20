@@ -16,7 +16,7 @@ async function bootstrap(): Promise<void> {
   app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads' });
   app.enableCors({
     origin: true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Shop-Id'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Shop-Id', 'X-App-Id', 'X-Timestamp', 'X-Nonce', 'X-Sign'],
   });
   app.useGlobalPipes(
     new ValidationPipe({

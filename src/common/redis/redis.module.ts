@@ -7,7 +7,7 @@ import { isNumber } from '../tools';
 export const REDIS_CLIENT = 'REDIS_CLIENT';
 
 /**
- * Redis 仅用于 JWT 黑名单，不承担消息队列。
+ * Redis 用于 JWT 黑名单和商家验签 Nonce，不承担消息队列。
  */
 @Global()
 @Module({

@@ -289,6 +289,30 @@ export const RequestHeaderName = {
 } as const;
 
 /**
+ * 商家验签请求头。Express 会把请求头转成小写。
+ */
+export const MerchantAuthHeader = {
+  APP_ID: 'x-app-id',
+  TIMESTAMP: 'x-timestamp',
+  NONCE: 'x-nonce',
+  SIGN: 'x-sign',
+} as const;
+
+/**
+ * 商家验签。待签名字符串与聊天服务生成的 6 行一致。
+ */
+export const MerchantAuthSetting = {
+  TIMESTAMP_TOLERANCE_SECONDS: 300,
+  NONCE_MIN_LENGTH: 8,
+  NONCE_MAX_LENGTH: 64,
+  SIGN_HEX_LENGTH: 64,
+  QUERY_KEY_MAX_COUNT: 50,
+  QUERY_KEY_MAX_LENGTH: 128,
+  QUERY_VALUE_MAX_LENGTH: 2048,
+  EMPTY_BODY_SHA256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+} as const;
+
+/**
  * 授权方案。
  */
 export const AuthorizationScheme = {
@@ -323,10 +347,11 @@ export const AesGcmSetting = {
 } as const;
 
 /**
- * Redis 键前缀。只用于 JWT 黑名单。
+ * Redis 键前缀。用于 JWT 黑名单和商家验签 Nonce。
  */
 export const RedisKey = {
   JWT_BLACKLIST_PREFIX: 'auth:blacklist:',
+  MERCHANT_NONCE_PREFIX: 'merchant:nonce:',
 } as const;
 
 /**

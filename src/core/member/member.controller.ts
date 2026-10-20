@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { ModuleCode, PermissionCode } from '../../common/constants';
 import { PageQueryDto } from '../../common/dto/page-query.dto';
 import { CurrentAccount } from '../../common/decorators/current-account.decorator';
-import { RequireModule, RequirePermission, RequiresShop } from '../../common/decorators/auth.decorators';
+import { Public, RequireModule, RequirePermission, RequiresShop } from '../../common/decorators/auth.decorators';
+import { MerchantAuthGuard } from '../../common/merchant-auth/merchant-auth.guard';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { LoginAccountContext } from '../../common/interfaces/login-account-context';
 import { isEmpty } from '../../common/tools';
@@ -67,6 +68,19 @@ export class PayQrDto {
   @IsString()
   @IsNotEmpty()
   cipherText: string;
+}
+
+/**
+ * 服务页查询 A380 余额。account 只参与验签，不查积分。
+ */
+export class CommonBalanceQueryDto {
+  @IsString()
+  @IsNotEmpty()
+  chat_account: string;
+
+  @IsOptional()
+  @IsString()
+  account?: string;
 }
 
 /**
@@ -188,5 +202,24 @@ export class MemberAppController {
       memberBillQueryDto.page,
       memberBillQueryDto.pageSize,
     );
+  }
+}
+
+/**
+ * 给聊天服务页查询 A380 余额。不使用登录令牌，改为核对商家签名。
+ */
+@Controller('api/v1/common')
+export class MemberCommonController {
+  constructor(private readonly memberQueryService: MemberQueryService) {}
+
+  /**
+   * 按聊天用户名返回整数元余额。
+   */
+  @Public()
+  @UseGuards(MerchantAuthGuard)
+  @Get('balance')
+  async balance(@Query() commonBalanceQueryDto: CommonBalanceQueryDto) {
+    const a380 = await this.memberQueryService.readBalanceYuan(commonBalanceQueryDto.chat_account);
+    return { a380 };
   }
 }
