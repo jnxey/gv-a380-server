@@ -301,6 +301,8 @@ export const MiniappSignType = {
   MINIAPP_SIGN: 'MP_SIGN',
   USER_QUERY: 'U_Q',
   PAY_RECHARGE: 'P_R',
+  /** 安全密钥校验通过 */
+  CONSUMER_DOOR_LOCK: 'C_D',
 } as const;
 
 /**

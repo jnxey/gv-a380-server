@@ -24,6 +24,7 @@ import {
   NumberBoundary,
 } from '../common/constants';
 import { ShopContext } from '../common/context/shop-context';
+import { MiniappSignService } from '../common/crypto/miniapp-sign.service';
 import { BusinessException } from '../common/exceptions/business.exception';
 import { PageResult } from '../common/interfaces/page-result';
 import { createBusinessNo, createVerifyCode, isDuplicateEntryError, isEmpty, isNumber, isOneOf, isPositiveMoney, resolvePage, toIdentifier, toMoneyString } from '../common/tools';
@@ -43,6 +44,7 @@ export interface CreateKtvBookingCommand {
   bookingDate: string;
   startTime: string;
   durationHours: number;
+  cipherText: string;
 }
 
 /**
@@ -137,6 +139,7 @@ export class KtvService {
     private readonly shopService: ShopService,
     private readonly memberBalanceService: MemberBalanceService,
     private readonly memberQueryService: MemberQueryService,
+    private readonly miniappSignService: MiniappSignService,
     private readonly notifyService: NotifyService,
   ) {}
 
@@ -358,6 +361,11 @@ export class KtvService {
     const enabledShop = await this.shopService.findEnabledShop(command.shopId, ShopType.KTV);
     this.assertBookableSlot(enabledShop, command.bookingDate, command.startTime);
     const bookingRange = this.resolveBookingRange(command.bookingDate, command.startTime, durationHours);
+    const securityKeyUsername = this.miniappSignService.readConsumerDoorLockUsername(command.cipherText);
+    const memberAccount = await this.memberQueryService.findById(memberId);
+    if (isEmpty(memberAccount) || memberAccount.username !== securityKeyUsername) {
+      throw new BusinessException('安全密钥无效');
+    }
     return this.dataSource.transaction(async (entityManager) => {
       // 1. 校验门店真实存在且为启用中的 KTV，不以请求里的门店文本直接落库
       const shop = await this.shopService.findEnabledShopInManager(entityManager, command.shopId, ShopType.KTV);

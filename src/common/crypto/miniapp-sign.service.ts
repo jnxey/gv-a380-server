@@ -115,6 +115,43 @@ export class MiniappSignService {
   }
 
   /**
+   * 解开安全密钥校验密文，返回里面的用户名。
+   * 类型必须是安全密钥，时间戳偏离超过 5 分钟算无效。解不开时不返回明文。
+   */
+  readConsumerDoorLockUsername(cipherText: string): string {
+    let decryptedText = '';
+    try {
+      decryptedText = this.decryptCipherText(cipherText);
+    } catch {
+      throw new BusinessException('安全密钥无效');
+    }
+    let parsedPayload: unknown;
+    try {
+      parsedPayload = JSON.parse(decryptedText);
+    } catch {
+      throw new BusinessException('安全密钥无效');
+    }
+    if (isObject(parsedPayload) !== true) {
+      throw new BusinessException('安全密钥无效');
+    }
+    if (parsedPayload.type !== MiniappSignType.CONSUMER_DOOR_LOCK) {
+      throw new BusinessException('安全密钥无效');
+    }
+    const username = parsedPayload.cot;
+    if (typeof username !== 'string' || isEmpty(username)) {
+      throw new BusinessException('安全密钥无效');
+    }
+    const timestamp = parsedPayload.tsp;
+    if (!isNumber(timestamp)) {
+      throw new BusinessException('安全密钥无效');
+    }
+    if (Math.abs(Date.now() - Number(timestamp)) > PAY_QR_MAX_SKEW_MILLISECONDS) {
+      throw new BusinessException('安全密钥无效');
+    }
+    return username;
+  }
+
+  /**
    * 签发一张发给聊天服务的查询令牌。
    * 明文含类型、查询词和当前毫秒时间。聊天服务只接受 5 分钟内的令牌。
    */

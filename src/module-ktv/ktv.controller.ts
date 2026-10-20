@@ -124,6 +124,10 @@ export class CreateKtvBookingDto {
   @Min(KtvBookingHour.MIN)
   @Max(KtvBookingHour.MAX)
   durationHours: number;
+
+  @IsString()
+  @IsNotEmpty()
+  cipherText: string;
 }
 
 /**
