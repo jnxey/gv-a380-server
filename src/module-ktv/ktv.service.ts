@@ -16,6 +16,7 @@ import {
   KtvConsumeStatus,
   KtvRoomStatus,
   KtvOrderStatus,
+  KtvPendingVerifyWindow,
   PageSetting,
   RecordStatus,
   ShopImageLimit,
@@ -555,28 +556,59 @@ export class KtvService {
   }
 
   /**
-   * 后台分页查询当前门店预订订单。传入订单状态时只查该状态。
+   * 后台分页查询当前门店预订订单。传入订单状态时只查该状态。传入近期小时数时，只留开唱时间落在现在前后这个小时数内的订单。
    */
   async pageBookingOrders(
     verifyCode: string,
     orderStatus: string,
+    recentHours: number | undefined,
     pageValue: unknown,
     pageSizeValue: unknown,
   ): Promise<PageResult<KtvBookingOrderView>> {
     const pageResult = resolvePage(pageValue, pageSizeValue);
-    const whereCondition: FindOptionsWhere<KtvBookingOrder> = {};
+    if (isEmpty(recentHours)) {
+      const whereCondition: FindOptionsWhere<KtvBookingOrder> = {};
+      if (!isEmpty(verifyCode)) {
+        whereCondition.verifyCode = verifyCode;
+      }
+      if (!isEmpty(orderStatus)) {
+        whereCondition.orderStatus = orderStatus;
+      }
+      const [bookingOrderList, total] = await this.ktvBookingOrderRepository.findAndCount({
+        where: whereCondition,
+        order: { id: 'DESC' },
+        skip: pageResult.skip,
+        take: pageResult.pageSize,
+      });
+      const viewList = await this.toBookingViewList(bookingOrderList);
+      return { list: viewList, total, page: pageResult.page, pageSize: pageResult.pageSize };
+    }
+    if (recentHours !== KtvPendingVerifyWindow.HOURS) {
+      throw new BusinessException('待核销查询范围不正确');
+    }
+    // 1. 开唱时刻落在现在往前、往后各一段小时内
+    const now = new Date();
+    const rangeStartAt = new Date(now.getTime());
+    rangeStartAt.setHours(rangeStartAt.getHours() - KtvPendingVerifyWindow.HOURS);
+    const rangeEndAt = new Date(now.getTime());
+    rangeEndAt.setHours(rangeEndAt.getHours() + KtvPendingVerifyWindow.HOURS);
+    const bookingOrderQuery = this.ktvBookingOrderRepository.createQueryBuilder('bookingOrder');
     if (!isEmpty(verifyCode)) {
-      whereCondition.verifyCode = verifyCode;
+      bookingOrderQuery.andWhere('bookingOrder.verifyCode = :verifyCode', { verifyCode });
     }
     if (!isEmpty(orderStatus)) {
-      whereCondition.orderStatus = orderStatus;
+      bookingOrderQuery.andWhere('bookingOrder.orderStatus = :orderStatus', { orderStatus });
     }
-    const [bookingOrderList, total] = await this.ktvBookingOrderRepository.findAndCount({
-      where: whereCondition,
-      order: { id: 'DESC' },
-      skip: pageResult.skip,
-      take: pageResult.pageSize,
+    bookingOrderQuery.andWhere('TIMESTAMP(bookingOrder.bookingDate, bookingOrder.startTime) >= :rangeStart', {
+      rangeStart: this.formatDateTime(rangeStartAt),
     });
+    bookingOrderQuery.andWhere('TIMESTAMP(bookingOrder.bookingDate, bookingOrder.startTime) <= :rangeEnd', {
+      rangeEnd: this.formatDateTime(rangeEndAt),
+    });
+    bookingOrderQuery.orderBy('bookingOrder.id', 'DESC');
+    bookingOrderQuery.skip(pageResult.skip);
+    bookingOrderQuery.take(pageResult.pageSize);
+    const [bookingOrderList, total] = await bookingOrderQuery.getManyAndCount();
     const viewList = await this.toBookingViewList(bookingOrderList);
     return { list: viewList, total, page: pageResult.page, pageSize: pageResult.pageSize };
   }

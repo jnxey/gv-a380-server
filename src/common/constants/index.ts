@@ -139,6 +139,13 @@ export const KtvOccupyDuration = {
 } as const;
 
 /**
+ * 包厢状态页待核销查询的开唱时间窗口，现在往前和往后各这么多小时。
+ */
+export const KtvPendingVerifyWindow = {
+  HOURS: 4,
+} as const;
+
+/**
  * 可预约的开唱刻度。今天从下一档可用刻度起到 23:30，后四天每天 00:00 到 23:30。
  */
 export const KtvBookingSlot = {
