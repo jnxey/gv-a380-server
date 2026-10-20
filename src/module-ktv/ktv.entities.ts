@@ -81,6 +81,9 @@ export class KtvRoom {
   @Column({ type: 'varchar', length: 16, default: 'IDLE' })
   roomStatus: string;
 
+  @Column({ type: 'datetime', nullable: true })
+  occupyEndAt: string | null;
+
   @Column({ type: 'int', unsigned: true, default: 0 })
   sortOrder: number;
 

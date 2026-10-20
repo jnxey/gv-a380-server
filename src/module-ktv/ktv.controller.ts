@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Param, Post, Put, Query, UploadedFile, U
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Type } from 'class-transformer';
 import { ArrayNotEmpty, IsArray, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
-import { KtvBookingHour, KtvOrderStatus, KtvRoomStatus, ModuleCode, PermissionCode, RecordStatus, ShopImageLimit } from '../common/constants';
+import { KtvBookingHour, KtvOccupyDuration, KtvOrderStatus, KtvRoomStatus, ModuleCode, PermissionCode, RecordStatus, ShopImageLimit } from '../common/constants';
 import { PageQueryDto } from '../common/dto/page-query.dto';
 import { CurrentAccount } from '../common/decorators/current-account.decorator';
 import { RequireModule, RequirePermission, RequiresShop } from '../common/decorators/auth.decorators';
@@ -25,11 +25,17 @@ export class SaveKtvRoomTypeDto {
 }
 
 /**
- * 手动切换包厢运营状态。线下开包厢可以把空闲写成使用中。
+ * 手动切换包厢运营状态。线下开包厢可以把空闲写成使用中，并带上演唱时长。
  */
 export class UpdateKtvRoomStatusDto {
   @IsIn(Object.values(KtvRoomStatus))
   roomStatus: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @IsIn(KtvOccupyDuration.HOUR_LIST)
+  durationHours?: number;
 }
 
 /**
@@ -264,7 +270,7 @@ export class KtvAdminController {
   @Put('rooms/:roomId/room-status')
   @RequirePermission(PermissionCode.KTV_ROOM_SAVE)
   async updateRoomStatus(@Param('roomId') roomId: string, @Body() updateKtvRoomStatusDto: UpdateKtvRoomStatusDto) {
-    await this.ktvService.updateRoomStatus(roomId, updateKtvRoomStatusDto.roomStatus);
+    await this.ktvService.updateRoomStatus(roomId, updateKtvRoomStatusDto.roomStatus, updateKtvRoomStatusDto.durationHours);
     return null;
   }
 

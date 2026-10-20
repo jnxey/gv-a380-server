@@ -132,6 +132,13 @@ export const KtvBookingHour = {
 } as const;
 
 /**
+ * 线下开包厢可选的演唱小时。
+ */
+export const KtvOccupyDuration = {
+  HOUR_LIST: [2, 3, 4, 5, 6],
+} as const;
+
+/**
  * 可预约的开唱刻度。今天从下一档可用刻度起到 23:30，后四天每天 00:00 到 23:30。
  */
 export const KtvBookingSlot = {

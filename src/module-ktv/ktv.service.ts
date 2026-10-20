@@ -11,6 +11,7 @@ import {
   KtvBookingActiveStatusList,
   KtvBookingCancelableStatusList,
   KtvBookingHour,
+  KtvOccupyDuration,
   KtvBookingSlot,
   KtvConsumeStatus,
   KtvRoomStatus,
@@ -328,10 +329,10 @@ export class KtvService {
   }
 
   /**
-   * 手动切换包厢运营状态。使用中只允许从空闲开包厢写入。
+   * 手动切换包厢运营状态。使用中只允许从空闲开包厢写入，并记下结束时间。
    */
-  async updateRoomStatus(roomId: string, roomStatus: string): Promise<void> {
-    if (isOneOf(roomStatus, Object.values(KtvRoomStatus)) !== true) {
+  async updateRoomStatus(roomId: string, roomStatus: string, durationHours?: number): Promise<void> {
+    if (!isOneOf(roomStatus, Object.values(KtvRoomStatus))) {
       throw new BusinessException('包厢状态不正确');
     }
     const ktvRoom = await this.ktvRoomRepository.findOne({ where: { id: roomId } });
@@ -340,6 +341,20 @@ export class KtvService {
     }
     if (roomStatus === KtvRoomStatus.IN_USE && ktvRoom.roomStatus !== KtvRoomStatus.IDLE) {
       throw new BusinessException('只有空闲包厢可以开包厢');
+    }
+    // 1. 开成使用中必须选列表里的演唱小时，结束时间从现在起算
+    if (roomStatus === KtvRoomStatus.IN_USE) {
+      const durationHourCount = Number(durationHours);
+      const durationHourMatched = KtvOccupyDuration.HOUR_LIST.some((hourCount) => hourCount === durationHourCount);
+      if (!isNumber(durationHours) || !Number.isInteger(durationHourCount) || !durationHourMatched) {
+        throw new BusinessException(`请选择${KtvOccupyDuration.HOUR_LIST.join('、')}小时`);
+      }
+      const endAt = new Date();
+      endAt.setHours(endAt.getHours() + durationHourCount);
+      ktvRoom.occupyEndAt = this.formatDateTime(endAt);
+    } else {
+      // 2. 离开使用中后不再提醒到点
+      ktvRoom.occupyEndAt = null;
     }
     ktvRoom.roomStatus = roomStatus;
     await this.ktvRoomRepository.save(ktvRoom);
@@ -637,6 +652,7 @@ export class KtvService {
       bookingOrder.roomId = toIdentifier(ktvRoom.id);
       bookingOrder.orderStatus = KtvOrderStatus.VERIFIED;
       ktvRoom.roomStatus = KtvRoomStatus.IN_USE;
+      ktvRoom.occupyEndAt = assignedRange.rangeEnd;
       await entityManager.getRepository(KtvRoom).save(ktvRoom);
       await entityManager.getRepository(KtvBookingOrder).save(bookingOrder);
     });
