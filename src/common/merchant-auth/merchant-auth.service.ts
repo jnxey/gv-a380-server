@@ -1,9 +1,10 @@
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
 import Redis from 'ioredis';
 import { MerchantAuthHeader, MerchantAuthSetting, RedisKey, RedisValue } from '../constants';
+import { BusinessException } from '../exceptions/business.exception';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { isEmpty } from '../tools';
 
@@ -18,6 +19,16 @@ const MerchantAuthQueryMark = {
 } as const;
 
 /**
+ * 发给积分服务的签名头。对方不区分大小写。
+ */
+const MerchantAuthOutboundHeader = {
+  APP_ID: 'X-App-Id',
+  TIMESTAMP: 'X-Timestamp',
+  NONCE: 'X-Nonce',
+  SIGN: 'X-Sign',
+} as const;
+
+/**
  * 核对聊天服务发出的商家 HMAC。只验 6 行签名，不追加账号行。
  */
 @Injectable()
@@ -27,6 +38,28 @@ export class MerchantAuthService {
     @Inject(REDIS_CLIENT)
     private readonly redisClient: Redis,
   ) {}
+
+  /**
+   * 为对外的 GET 生成 6 行商家签名头。凭证没配时拒绝。
+   */
+  createGetSignHeaders(requestPath: string, queryRecord: Record<string, string>): Record<string, string> {
+    const appId = this.configService.get<string>('MERCHANT_AUTH_APP_ID');
+    const appSecret = this.configService.get<string>('MERCHANT_AUTH_APP_SECRET');
+    if (isEmpty(appId) || isEmpty(appSecret)) {
+      throw new BusinessException('积分服务暂时不可用');
+    }
+    const timestampText = String(Math.floor(Date.now() / 1000));
+    const nonceText = randomBytes(MerchantAuthSetting.NONCE_BYTE_LENGTH).toString('hex');
+    const canonicalQuery = this.buildCanonicalQueryString(queryRecord);
+    const lineList = ['GET', requestPath, canonicalQuery, MerchantAuthSetting.EMPTY_BODY_SHA256, timestampText, nonceText];
+    const signHex = createHmac('sha256', appSecret).update(lineList.join(MerchantAuthQueryMark.LINE_SEPARATOR), 'utf8').digest('hex');
+    return {
+      [MerchantAuthOutboundHeader.APP_ID]: appId,
+      [MerchantAuthOutboundHeader.TIMESTAMP]: timestampText,
+      [MerchantAuthOutboundHeader.NONCE]: nonceText,
+      [MerchantAuthOutboundHeader.SIGN]: signHex,
+    };
+  }
 
   /**
    * 核对 AppId、时间戳、签名，并把本次 Nonce 写入 Redis。失败一律拒绝。

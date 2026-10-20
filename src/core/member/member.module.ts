@@ -10,6 +10,7 @@ import { MemberAdminController, MemberAppController, MemberCommonController } fr
 import { MemberBalanceService } from './member-balance.service';
 import { MemberPointLog } from './member-point-log.entity';
 import { MemberQueryService } from './member-query.service';
+import { PointBalanceClient } from './point-balance.client';
 
 /**
  * 会员中台。只导出服务，不把 member_account 仓储暴露给业务模块。
@@ -17,7 +18,7 @@ import { MemberQueryService } from './member-query.service';
 @Module({
   imports: [forwardRef(() => AuthModule), TypeOrmModule.forFeature([MemberAccount, MemberPointLog, FinanceBill]), FinanceModule, MerchantAuthModule],
   controllers: [MemberAdminController, MemberAppController, MemberCommonController],
-  providers: [MemberBalanceService, MemberQueryService, ChatUserClient],
+  providers: [MemberBalanceService, MemberQueryService, ChatUserClient, PointBalanceClient],
   exports: [MemberBalanceService, MemberQueryService, ChatUserClient],
 })
 export class MemberModule {}

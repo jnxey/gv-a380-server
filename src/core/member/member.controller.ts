@@ -13,6 +13,7 @@ import { FinanceBillService } from '../finance/finance-bill.service';
 import { MemberBalanceService } from './member-balance.service';
 import { ChatUserClient } from './chat-user.client';
 import { MemberQueryService } from './member-query.service';
+import { PointBalanceClient } from './point-balance.client';
 
 /**
  * 会员查询参数。
@@ -68,6 +69,15 @@ export class PayQrDto {
   @IsString()
   @IsNotEmpty()
   cipherText: string;
+}
+
+/**
+ * 服务页查询积分余额。account 是积分账号。
+ */
+export class PointBalanceQueryDto {
+  @IsString()
+  @IsNotEmpty()
+  account: string;
 }
 
 /**
@@ -210,7 +220,10 @@ export class MemberAppController {
  */
 @Controller('api/v1/common')
 export class MemberCommonController {
-  constructor(private readonly memberQueryService: MemberQueryService) {}
+  constructor(
+    private readonly memberQueryService: MemberQueryService,
+    private readonly pointBalanceClient: PointBalanceClient,
+  ) {}
 
   /**
    * 按聊天用户名返回整数元余额。
@@ -221,5 +234,16 @@ export class MemberCommonController {
   async balance(@Query() commonBalanceQueryDto: CommonBalanceQueryDto) {
     const a380 = await this.memberQueryService.readBalanceYuan(commonBalanceQueryDto.chat_account);
     return { a380 };
+  }
+
+  /**
+   * 按积分账号返回整数积分。积分服务没有这个账号时为 0。
+   */
+  @Public()
+  @UseGuards(MerchantAuthGuard)
+  @Get('point-balance')
+  async pointBalance(@Query() pointBalanceQueryDto: PointBalanceQueryDto) {
+    const point = await this.pointBalanceClient.readPointBalance(pointBalanceQueryDto.account);
+    return { point };
   }
 }
