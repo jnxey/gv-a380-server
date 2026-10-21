@@ -114,6 +114,12 @@ export class KtvBookingOrder {
   @Column({ type: 'bigint', unsigned: true })
   memberId: string;
 
+  @Column({ type: 'varchar', length: 64, default: '' })
+  guestName: string;
+
+  @Column({ type: 'varchar', length: 64, default: '' })
+  contact: string;
+
   @Column({ type: 'bigint', unsigned: true })
   roomTypeId: string;
 

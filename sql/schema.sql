@@ -269,6 +269,8 @@ CREATE TABLE ktv_booking_order (
   shop_id BIGINT UNSIGNED NOT NULL COMMENT '门店ID',
   order_no VARCHAR(64) NOT NULL COMMENT '订单号',
   member_id BIGINT UNSIGNED NOT NULL COMMENT '会员ID',
+  guest_name VARCHAR(64) NOT NULL DEFAULT '' COMMENT '预定人',
+  contact VARCHAR(64) NOT NULL DEFAULT '' COMMENT '联系方式',
   room_type_id BIGINT UNSIGNED NOT NULL COMMENT '包厢类型ID',
   room_id BIGINT UNSIGNED NULL COMMENT '包厢ID，核销后分配',
   booking_date DATE NOT NULL COMMENT '预订日期',

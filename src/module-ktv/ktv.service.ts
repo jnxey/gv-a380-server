@@ -10,6 +10,7 @@ import {
   FinanceBizType,
   KtvBookingActiveStatusList,
   KtvBookingCancelableStatusList,
+  HotelWalkInContact,
   KtvBookingHour,
   KtvOccupyDuration,
   KtvBookingSlot,
@@ -48,6 +49,8 @@ export interface CreateKtvBookingCommand {
   bookingDate: string;
   startTime: string;
   durationHours: number;
+  guestName: string;
+  contact: string;
   cipherText: string;
 }
 
@@ -109,6 +112,8 @@ export interface KtvBookingOrderView {
   orderNo: string;
   memberId: string;
   username: string;
+  guestName: string;
+  contact: string;
   roomTypeId: string;
   roomTypeName: string;
   roomId: string;
@@ -561,6 +566,21 @@ export class KtvService {
     if (Number.isInteger(durationHours) !== true || durationHours < KtvBookingHour.MIN || durationHours > KtvBookingHour.MAX) {
       throw new BusinessException('演唱小时数必须在1到24之间');
     }
+    // 预定人和联系方式去空白后不能空，也不能超过订单字段长度
+    const guestNameText = isEmpty(command.guestName) ? '' : command.guestName.trim();
+    const contactText = isEmpty(command.contact) ? '' : command.contact.trim();
+    if (isEmpty(guestNameText)) {
+      throw new BusinessException('请填写预定人');
+    }
+    if (isEmpty(contactText)) {
+      throw new BusinessException('请填写联系方式');
+    }
+    if (guestNameText.length > HotelWalkInContact.MAX_LENGTH) {
+      throw new BusinessException('预定人过长');
+    }
+    if (contactText.length > HotelWalkInContact.MAX_LENGTH) {
+      throw new BusinessException('联系方式过长');
+    }
     const enabledShop = await this.shopService.findEnabledShop(command.shopId, ShopType.KTV);
     this.assertBookableSlot(enabledShop, command.bookingDate, command.startTime);
     const bookingRange = this.resolveBookingRange(command.bookingDate, command.startTime, durationHours);
@@ -609,6 +629,8 @@ export class KtvService {
       bookingOrder.shopId = shopId;
       bookingOrder.orderNo = createBusinessNo(BusinessNoPrefix.KTV_BOOKING);
       bookingOrder.memberId = memberId;
+      bookingOrder.guestName = guestNameText;
+      bookingOrder.contact = contactText;
       bookingOrder.roomTypeId = roomTypeId;
       bookingOrder.roomId = null;
       bookingOrder.bookingDate = command.bookingDate;
@@ -1291,6 +1313,8 @@ export class KtvService {
         orderNo: bookingOrder.orderNo,
         memberId: toIdentifier(bookingOrder.memberId),
         username: isEmpty(memberAccount) ? '' : memberAccount.username,
+        guestName: isEmpty(bookingOrder.guestName) ? '' : bookingOrder.guestName,
+        contact: isEmpty(bookingOrder.contact) ? '' : bookingOrder.contact,
         roomTypeId: toIdentifier(bookingOrder.roomTypeId),
         roomTypeName: isEmpty(ktvRoomType) ? '' : ktvRoomType.typeName,
         roomId: toIdentifier(bookingOrder.roomId),
