@@ -88,6 +88,7 @@ INSERT INTO sys_menu (id, parent_id, menu_name, menu_path, component_path, permi
 (11, 1, 'A380查询', '/member/query', 'member/query', 'member:query', 'CORE', 11),
 (12, 1, 'A380充值', '/member/recharge', 'member/recharge', 'member:recharge', 'CORE', 12),
 (21, 2, '财务流水', '/finance/bill', 'finance/bill', 'finance:bill:query', 'CORE', 21),
+(22, 2, '用户流水', '/finance/member-bill', 'finance/member-bill', 'finance:bill:query', 'CORE', 22),
 (31, 3, '门店管理', '/ktv/shop', 'ktv/shop', 'ktv:shop:query', 'KTV', 31),
 (34, 3, '包厢类型', '/ktv/room-type', 'ktv/room-type', 'ktv:room-type:query', 'KTV', 32),
 (32, 3, '包厢管理', '/ktv/room', 'ktv/room', 'ktv:room:query', 'KTV', 33),
@@ -104,9 +105,9 @@ INSERT INTO sys_menu (id, parent_id, menu_name, menu_path, component_path, permi
 
 INSERT INTO sys_role_menu (id, role_id, menu_id) VALUES
 (1, 1, 1),(2, 1, 2),(3, 1, 3),(4, 1, 4),
-(5, 1, 11),(6, 1, 12),(7, 1, 21),(8, 1, 31),(9, 1, 32),(38, 1, 35),(10, 1, 33),(36, 1, 34),
+(5, 1, 11),(6, 1, 12),(7, 1, 21),(43, 1, 22),(8, 1, 31),(9, 1, 32),(38, 1, 35),(10, 1, 33),(36, 1, 34),
 (11, 1, 41),(12, 1, 42),(13, 1, 43),
-(14, 2, 1),(15, 2, 2),(16, 2, 11),(17, 2, 12),(18, 2, 21),
+(14, 2, 1),(15, 2, 2),(16, 2, 11),(17, 2, 12),(18, 2, 21),(44, 2, 22),
 (19, 3, 3),(20, 3, 31),(21, 3, 32),(39, 3, 35),(22, 3, 33),(37, 3, 34),
 (23, 4, 3),(24, 4, 33),(42, 4, 36),
 (40, 1, 36),(41, 3, 36),
