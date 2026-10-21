@@ -99,8 +99,11 @@ export class HotelBookingOrder {
   @Column({ type: 'varchar', length: 64 })
   orderNo: string;
 
-  @Column({ type: 'bigint', unsigned: true })
-  memberId: string;
+  @Column({ type: 'bigint', unsigned: true, nullable: true })
+  memberId: string | null;
+
+  @Column({ type: 'varchar', length: 64, default: '' })
+  contact: string;
 
   @Column({ type: 'bigint', unsigned: true })
   roomTypeId: string;
@@ -144,8 +147,8 @@ export class HotelStayRecord {
   @Column({ type: 'bigint', unsigned: true })
   roomId: string;
 
-  @Column({ type: 'bigint', unsigned: true })
-  memberId: string;
+  @Column({ type: 'bigint', unsigned: true, nullable: true })
+  memberId: string | null;
 
   @Column({ type: 'varchar', length: 32 })
   stayStatus: string;

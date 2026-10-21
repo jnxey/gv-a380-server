@@ -212,6 +212,30 @@ export const HotelRoomStatus = {
 } as const;
 
 /**
+ * 酒店入住日。门店当地早上这个钟点前，仍算前一天。没有时区时用东八区。
+ */
+export const HotelBusinessDay = {
+  START_HOUR: 6,
+  DEFAULT_TIME_ZONE_OFFSET: '+08:00',
+  DEFAULT_OFFSET_MINUTES: 480,
+} as const;
+
+/**
+ * 没有预订时当场入住可选的晚数。
+ */
+export const HotelWalkInNight = {
+  MIN_COUNT: 1,
+  MAX_COUNT: 30,
+} as const;
+
+/**
+ * 现场入住联系方式。没有会员时写在订单上。
+ */
+export const HotelWalkInContact = {
+  MAX_LENGTH: 64,
+} as const;
+
+/**
  * 积分变动类型。
  */
 export const PointChangeType = {

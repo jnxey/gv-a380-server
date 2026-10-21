@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, ForbiddenException, Get, Param, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ArrayNotEmpty, IsArray, IsIn, IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
-import { FinanceBizType, HotelRoomStatus, ModuleCode, PermissionCode, RecordStatus, ShopImageLimit } from '../common/constants';
+import { ArrayNotEmpty, IsArray, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
+import { FinanceBizType, HotelRoomStatus, HotelWalkInContact, HotelWalkInNight, ModuleCode, PermissionCode, RecordStatus, ShopImageLimit } from '../common/constants';
 import { PageQueryDto } from '../common/dto/page-query.dto';
 import { CurrentAccount } from '../common/decorators/current-account.decorator';
 import { ShopContext } from '../common/context/shop-context';
@@ -120,18 +120,18 @@ export class HotelDeductDto {
 }
 
 /**
- * 现场订房。
+ * 没有预订时按今天入住。联系方式不查会员，晚数决定离店日。
  */
 export class HotelWalkInDto {
   @IsString()
   @IsNotEmpty()
-  keyword: string;
+  @MaxLength(HotelWalkInContact.MAX_LENGTH)
+  contact: string;
 
-  @Matches(/^\d{4}-\d{2}-\d{2}$/)
-  checkInDate: string;
-
-  @Matches(/^\d{4}-\d{2}-\d{2}$/)
-  checkOutDate: string;
+  @IsInt()
+  @Min(HotelWalkInNight.MIN_COUNT)
+  @Max(HotelWalkInNight.MAX_COUNT)
+  nightCount: number;
 }
 
 /**
@@ -343,12 +343,13 @@ export class HotelAdminController {
   }
 
   /**
-   * 现场订房。入住日是今天则立即入住这间房。
+   * 没有预订时按今天入住这间房。
    */
   @Post('rooms/:roomId/walk-in')
   @RequirePermission(PermissionCode.HOTEL_STAY_CHECK_IN)
-  walkIn(@Param('roomId') roomId: string, @Body() hotelWalkInDto: HotelWalkInDto) {
-    return this.hotelService.walkIn(roomId, hotelWalkInDto.keyword, hotelWalkInDto.checkInDate, hotelWalkInDto.checkOutDate);
+  async walkIn(@Param('roomId') roomId: string, @Body() hotelWalkInDto: HotelWalkInDto) {
+    await this.hotelService.walkIn(roomId, hotelWalkInDto.contact, hotelWalkInDto.nightCount);
+    return null;
   }
 
   /**

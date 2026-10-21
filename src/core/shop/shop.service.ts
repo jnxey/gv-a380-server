@@ -216,10 +216,7 @@ export class ShopService {
     shop.shopCode = command.shopCode;
     shop.shopName = command.shopName;
     shop.shopType = ShopType.HOTEL;
-    shop.address = isEmpty(command.address) ? '' : command.address;
-    shop.timeZone = '';
-    shop.businessHours = null;
-    shop.shopAddress = null;
+    this.fillHotelShopProfile(shop, command);
     shop.contactPhone = isEmpty(command.contactPhone) ? '' : command.contactPhone;
     shop.status = command.status;
     try {
@@ -252,7 +249,7 @@ export class ShopService {
     }
     shop.shopCode = command.shopCode;
     shop.shopName = command.shopName;
-    shop.address = isEmpty(command.address) ? '' : command.address;
+    this.fillHotelShopProfile(shop, command);
     shop.contactPhone = isEmpty(command.contactPhone) ? '' : command.contactPhone;
     shop.status = command.status;
     try {
@@ -379,6 +376,19 @@ export class ShopService {
       imageId: toIdentifier(shopImage.id),
       imageUrl: shopImage.imageUrl,
     };
+  }
+
+  /**
+   * 写入酒店门店的时区和位置。地址描述同时写回原来的地址文本。营业时间保持空。
+   */
+  private fillHotelShopProfile(shop: Shop, command: SaveShopCommand): void {
+    if (isEmpty(command.timeZone)) {
+      throw new BusinessException('请填写门店时区');
+    }
+    shop.timeZone = command.timeZone;
+    shop.businessHours = null;
+    shop.shopAddress = this.normalizeShopAddress(command.shopAddress);
+    shop.address = shop.shopAddress.addressText;
   }
 
   /**

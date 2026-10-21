@@ -1,11 +1,26 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsDefined, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ModuleCode, PermissionCode, RecordStatus, ShopImageLimit, ShopType } from '../common/constants';
 import { RequireModule, RequirePermission, RequiresShop } from '../common/decorators/auth.decorators';
 import { CurrentAccount } from '../common/decorators/current-account.decorator';
 import { LoginAccountContext } from '../common/interfaces/login-account-context';
 import { ShopService } from '../core/shop/shop.service';
+
+/**
+ * 酒店门店地址。经纬度是数字，描述是文字。
+ */
+export class HotelShopAddressDto {
+  @IsNumber()
+  longitude: number;
+
+  @IsNumber()
+  latitude: number;
+
+  @IsString()
+  addressText: string;
+}
 
 /**
  * 保存酒店门店。
@@ -21,11 +36,16 @@ export class SaveHotelShopDto {
 
   @IsOptional()
   @IsString()
-  address?: string;
-
-  @IsOptional()
-  @IsString()
   contactPhone?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  timeZone: string;
+
+  @IsDefined()
+  @ValidateNested()
+  @Type(() => HotelShopAddressDto)
+  shopAddress: HotelShopAddressDto;
 
   @IsIn(Object.values(RecordStatus))
   status: string;
@@ -59,9 +79,11 @@ export class HotelShopAdminController {
     const shop = await this.shopService.createHotelShop({
       shopCode: saveHotelShopDto.shopCode,
       shopName: saveHotelShopDto.shopName,
-      address: saveHotelShopDto.address || '',
+      address: '',
       contactPhone: saveHotelShopDto.contactPhone || '',
       status: saveHotelShopDto.status,
+      timeZone: saveHotelShopDto.timeZone,
+      shopAddress: saveHotelShopDto.shopAddress,
       operatorId: loginAccountContext.accountId,
       boundShopIdList: loginAccountContext.boundShopIdList,
     });
@@ -109,9 +131,11 @@ export class HotelShopAdminController {
     const shop = await this.shopService.updateHotelShop(shopId, {
       shopCode: saveHotelShopDto.shopCode,
       shopName: saveHotelShopDto.shopName,
-      address: saveHotelShopDto.address || '',
+      address: '',
       contactPhone: saveHotelShopDto.contactPhone || '',
       status: saveHotelShopDto.status,
+      timeZone: saveHotelShopDto.timeZone,
+      shopAddress: saveHotelShopDto.shopAddress,
       operatorId: loginAccountContext.accountId,
       boundShopIdList: loginAccountContext.boundShopIdList,
     });
