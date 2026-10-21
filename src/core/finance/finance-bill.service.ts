@@ -1,7 +1,7 @@
 import { ForbiddenException, Inject, Injectable, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import Decimal from 'decimal.js';
-import { Between, FindOptionsWhere, In, MoreThanOrEqual, Repository } from 'typeorm';
+import { Between, FindOptionsWhere, In, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { FinanceBizType, FinanceDirection, PageSetting } from '../../common/constants';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { PageResult } from '../../common/interfaces/page-result';
@@ -60,16 +60,30 @@ export class FinanceBillService {
     endDate: string,
     pageValue: unknown,
     pageSizeValue: unknown,
+    excludedBizType = '',
   ): Promise<PageResult<FinanceBill>> {
     if (!isEmpty(bizType) && !isOneOf(bizType, Object.values(FinanceBizType))) {
+      throw new BusinessException('流水类型不正确');
+    }
+    if (!isEmpty(excludedBizType) && !isOneOf(excludedBizType, Object.values(FinanceBizType))) {
       throw new BusinessException('流水类型不正确');
     }
     const pageResult = resolvePage(pageValue, pageSizeValue);
     const shopIdList = this.resolveBillShopIdList(boundShopIdList, shopId);
     const billTimeRange = this.resolveBillTimeRange(startDate, endDate);
+    if (isEmpty(bizType) !== true && bizType === excludedBizType) {
+      return {
+        list: [],
+        total: 0,
+        page: pageResult.page,
+        pageSize: pageResult.pageSize,
+      };
+    }
     const whereCondition: FindOptionsWhere<FinanceBill> = { shopId: In(shopIdList) };
     if (isEmpty(bizType) !== true) {
       whereCondition.bizType = bizType;
+    } else if (isEmpty(excludedBizType) !== true) {
+      whereCondition.bizType = Not(excludedBizType);
     }
     if (isEmpty(billTimeRange) !== true) {
       whereCondition.createdAt = Between(billTimeRange.startAt, billTimeRange.endAt);
@@ -135,8 +149,12 @@ export class FinanceBillService {
     bizType: string,
     startDate: string,
     endDate: string,
+    excludedBizType = '',
   ): Promise<FinanceBillSummaryResult> {
     if (!isEmpty(bizType) && !isOneOf(bizType, Object.values(FinanceBizType))) {
+      throw new BusinessException('流水类型不正确');
+    }
+    if (!isEmpty(excludedBizType) && !isOneOf(excludedBizType, Object.values(FinanceBizType))) {
       throw new BusinessException('流水类型不正确');
     }
     const shopIdList = this.resolveBillShopIdList(boundShopIdList, shopId);
@@ -148,8 +166,11 @@ export class FinanceBillService {
       .addSelect('financeBill.direction', 'direction')
       .addSelect('SUM(financeBill.amount)', 'totalAmount')
       .where('financeBill.shopId IN (:...shopIdList)', { shopIdList });
-    if (isEmpty(bizType) !== true) {
+    if (isEmpty(bizType) !== true && bizType !== excludedBizType) {
       queryBuilder.andWhere('financeBill.bizType = :bizType', { bizType });
+    }
+    if (isEmpty(excludedBizType) !== true) {
+      queryBuilder.andWhere('financeBill.bizType <> :excludedBizType', { excludedBizType });
     }
     if (isEmpty(billTimeRange) !== true) {
       queryBuilder.andWhere('financeBill.createdAt >= :startAt', { startAt: billTimeRange.startAt });

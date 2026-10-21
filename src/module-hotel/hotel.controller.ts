@@ -1,11 +1,14 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Param, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ArrayNotEmpty, IsArray, IsIn, IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
-import { HotelRoomStatus, ModuleCode, PermissionCode, RecordStatus, ShopImageLimit } from '../common/constants';
+import { FinanceBizType, HotelRoomStatus, ModuleCode, PermissionCode, RecordStatus, ShopImageLimit } from '../common/constants';
 import { PageQueryDto } from '../common/dto/page-query.dto';
 import { CurrentAccount } from '../common/decorators/current-account.decorator';
+import { ShopContext } from '../common/context/shop-context';
 import { RequireModule, RequirePermission, RequiresShop } from '../common/decorators/auth.decorators';
 import { LoginAccountContext } from '../common/interfaces/login-account-context';
+import { isEmpty } from '../common/tools';
+import { FinanceBillService } from '../core/finance/finance-bill.service';
 import { HotelService } from './hotel.service';
 
 /**
@@ -84,6 +87,75 @@ export class HotelExtendDto {
 }
 
 /**
+ * 手动切换空闲、打扫中或维修。在住不从这里改。
+ */
+export class UpdateHotelRoomStatusDto {
+  @IsIn([HotelRoomStatus.IDLE, HotelRoomStatus.CLEANING, HotelRoomStatus.MAINTENANCE])
+  roomStatus: string;
+}
+
+/**
+ * 解开付款码。
+ */
+export class HotelPayQrDto {
+  @IsString()
+  @IsNotEmpty()
+  cipherText: string;
+}
+
+/**
+ * 当前门店扣减会员余额。
+ */
+export class HotelDeductDto {
+  @IsString()
+  @IsNotEmpty()
+  memberId: string;
+
+  @IsNotEmpty()
+  amount: string | number;
+
+  @IsOptional()
+  @IsString()
+  remark?: string;
+}
+
+/**
+ * 现场订房。
+ */
+export class HotelWalkInDto {
+  @IsString()
+  @IsNotEmpty()
+  keyword: string;
+
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  checkInDate: string;
+
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  checkOutDate: string;
+}
+
+/**
+ * 当前门店财务流水查询参数。门店不接收前端传入。
+ */
+export class HotelBillQueryDto extends PageQueryDto {
+  @IsOptional()
+  @IsString()
+  bizType?: string;
+
+  @IsOptional()
+  @IsString()
+  keyword?: string;
+
+  @IsOptional()
+  @IsString()
+  startDate?: string;
+
+  @IsOptional()
+  @IsString()
+  endDate?: string;
+}
+
+/**
  * 小程序预订酒店。
  */
 export class CreateHotelBookingDto {
@@ -109,7 +181,76 @@ export class CreateHotelBookingDto {
 @RequireModule(ModuleCode.HOTEL)
 @RequiresShop()
 export class HotelAdminController {
-  constructor(private readonly hotelService: HotelService) {}
+  constructor(
+    private readonly hotelService: HotelService,
+    private readonly financeBillService: FinanceBillService,
+  ) {}
+
+  /**
+   * 读取本次请求已经校验过的当前门店。
+   */
+  private readCurrentShopId(): string {
+    const currentShopId = ShopContext.getCurrentShopId();
+    if (isEmpty(currentShopId)) {
+      throw new ForbiddenException('请选择门店');
+    }
+    return currentShopId;
+  }
+
+  /**
+   * 汇总当前门店的收入和支出。
+   */
+  @Get('bills/summary')
+  @RequirePermission(PermissionCode.HOTEL_BILL_QUERY)
+  summarizeBills(@Query() hotelBillQueryDto: HotelBillQueryDto) {
+    const currentShopId = this.readCurrentShopId();
+    return this.financeBillService.summarizeBills(
+      [currentShopId],
+      currentShopId,
+      hotelBillQueryDto.bizType || '',
+      hotelBillQueryDto.startDate || '',
+      hotelBillQueryDto.endDate || '',
+      FinanceBizType.RECHARGE,
+    );
+  }
+
+  /**
+   * 分页查询当前门店财务流水。
+   */
+  @Get('bills')
+  @RequirePermission(PermissionCode.HOTEL_BILL_QUERY)
+  pageBills(@Query() hotelBillQueryDto: HotelBillQueryDto) {
+    const currentShopId = this.readCurrentShopId();
+    return this.financeBillService.pageBills(
+      [currentShopId],
+      currentShopId,
+      hotelBillQueryDto.bizType || '',
+      hotelBillQueryDto.keyword || '',
+      hotelBillQueryDto.startDate || '',
+      hotelBillQueryDto.endDate || '',
+      hotelBillQueryDto.page,
+      hotelBillQueryDto.pageSize,
+      FinanceBizType.RECHARGE,
+    );
+  }
+
+  /**
+   * 解开付款码，返回对应会员。
+   */
+  @Post('pay-qr')
+  @RequirePermission(PermissionCode.HOTEL_DEDUCT)
+  findMemberByPayQr(@Body() hotelPayQrDto: HotelPayQrDto) {
+    return this.hotelService.findMemberByPayQr(hotelPayQrDto.cipherText);
+  }
+
+  /**
+   * 按当前酒店门店扣减会员余额。
+   */
+  @Post('deduct')
+  @RequirePermission(PermissionCode.HOTEL_DEDUCT)
+  deduct(@Body() hotelDeductDto: HotelDeductDto, @CurrentAccount() loginAccountContext: LoginAccountContext) {
+    return this.hotelService.deductMemberBalance(hotelDeductDto.memberId, hotelDeductDto.amount, hotelDeductDto.remark || '', loginAccountContext.accountId);
+  }
 
   /**
    * 查询当前门店全部房型。
@@ -198,6 +339,35 @@ export class HotelAdminController {
   @RequirePermission(PermissionCode.HOTEL_ROOM_SAVE)
   async sortRooms(@Body() sortIdListDto: SortIdListDto) {
     await this.hotelService.sortRooms(sortIdListDto.idList);
+    return null;
+  }
+
+  /**
+   * 现场订房。入住日是今天则立即入住这间房。
+   */
+  @Post('rooms/:roomId/walk-in')
+  @RequirePermission(PermissionCode.HOTEL_STAY_CHECK_IN)
+  walkIn(@Param('roomId') roomId: string, @Body() hotelWalkInDto: HotelWalkInDto) {
+    return this.hotelService.walkIn(roomId, hotelWalkInDto.keyword, hotelWalkInDto.checkInDate, hotelWalkInDto.checkOutDate);
+  }
+
+  /**
+   * 打扫完成，房间改回空闲。
+   */
+  @Post('rooms/:roomId/finish-cleaning')
+  @RequirePermission(PermissionCode.HOTEL_STAY_CHECK_OUT)
+  async finishCleaning(@Param('roomId') roomId: string) {
+    await this.hotelService.finishCleaning(roomId);
+    return null;
+  }
+
+  /**
+   * 手动切换空闲、打扫中或维修。在住房必须先退房。
+   */
+  @Post('rooms/:roomId/room-status')
+  @RequirePermission(PermissionCode.HOTEL_ROOM_SAVE)
+  async updateRoomStatus(@Param('roomId') roomId: string, @Body() updateHotelRoomStatusDto: UpdateHotelRoomStatusDto) {
+    await this.hotelService.updateRoomStatus(roomId, updateHotelRoomStatusDto.roomStatus);
     return null;
   }
 

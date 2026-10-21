@@ -55,6 +55,8 @@ INSERT INTO sys_permission (id, permission_code, permission_name, module_code, m
 (18, 'hotel:stay:extend', '酒店续住', 'HOTEL', 43),
 (19, 'hotel:stay:check-out', '酒店退房', 'HOTEL', 43),
 (20, 'hotel:order:cancel', '酒店订单取消', 'HOTEL', 43),
+(31, 'hotel:bill:query', '酒店财务流水查询', 'HOTEL', 45),
+(32, 'hotel:deduct', '酒店扣款', 'HOTEL', 44),
 (25, 'hotel:shop:query', '酒店门店查询', 'HOTEL', 40),
 (26, 'hotel:shop:save', '酒店门店保存', 'HOTEL', 40),
 (21, 'system:user:query', '账号查询', 'CORE', 51),
@@ -78,7 +80,10 @@ INSERT INTO sys_role_permission (id, role_id, permission_id) VALUES
 (46, 6, 14),(47, 6, 16),(48, 6, 17),(49, 6, 18),(50, 6, 19),(51, 6, 20),
 (52, 1, 21),(53, 1, 22),(54, 1, 23),(55, 1, 24),
 (56, 1, 25),(57, 1, 26),
-(58, 5, 25),(59, 5, 26);
+(58, 5, 25),(59, 5, 26),
+(76, 1, 31),(77, 5, 31),(78, 6, 31),
+(79, 6, 12),
+(80, 1, 32),(81, 5, 32),(82, 6, 32);
 
 INSERT INTO sys_menu (id, parent_id, menu_name, menu_path, component_path, permission_code, module_code, sort_order) VALUES
 (1, 0, 'A380中心', '/member', '', '', 'CORE', 10),
@@ -98,7 +103,9 @@ INSERT INTO sys_menu (id, parent_id, menu_name, menu_path, component_path, permi
 (40, 4, '门店管理', '/hotel/shop', 'hotel/shop', 'hotel:shop:query', 'HOTEL', 40),
 (41, 4, '房型管理', '/hotel/room-type', 'hotel/room-type', 'hotel:room-type:query', 'HOTEL', 41),
 (42, 4, '房间管理', '/hotel/room', 'hotel/room', 'hotel:room:query', 'HOTEL', 42),
-(43, 4, '入住退房', '/hotel/stay', 'hotel/stay', 'hotel:order:query', 'HOTEL', 43),
+(44, 4, '房间状态', '/hotel/room-status', 'hotel/room-status', 'hotel:room:query', 'HOTEL', 43),
+(43, 4, '订单管理', '/hotel/order', 'hotel/order', 'hotel:order:query', 'HOTEL', 44),
+(45, 4, '财务流水', '/hotel/bill', 'hotel/bill', 'hotel:bill:query', 'HOTEL', 45),
 (5, 0, '系统管理', '/system', '', '', 'CORE', 50),
 (51, 5, '账号管理', '/system/user', 'system/user', 'system:user:query', 'CORE', 51),
 (52, 5, '角色权限', '/system/role', 'system/role', 'system:role:query', 'CORE', 52);
@@ -112,6 +119,8 @@ INSERT INTO sys_role_menu (id, role_id, menu_id) VALUES
 (23, 4, 3),(24, 4, 33),(42, 4, 36),
 (40, 1, 36),(41, 3, 36),
 (25, 5, 4),(26, 5, 41),(27, 5, 42),(28, 5, 43),
+(45, 1, 44),(46, 5, 44),(47, 6, 44),
+(48, 1, 45),(49, 5, 45),(50, 6, 45),
 (29, 6, 4),(30, 6, 43),
 (31, 1, 5),(32, 1, 51),(33, 1, 52),
 (34, 1, 40),

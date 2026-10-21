@@ -84,6 +84,7 @@ export const FinanceBizType = {
   KTV_BOOKING: 'KTV_BOOKING',
   KTV_IN_STORE: 'KTV_IN_STORE',
   HOTEL_ROOM_FEE: 'HOTEL_ROOM_FEE',
+  HOTEL_IN_STORE: 'HOTEL_IN_STORE',
   REFUND: 'REFUND',
   SHOP_SCAN_PAY: 'SHOP_SCAN_PAY',
 } as const;
@@ -206,6 +207,7 @@ export const HotelStayStatus = {
 export const HotelRoomStatus = {
   IDLE: 'IDLE',
   OCCUPIED: 'OCCUPIED',
+  CLEANING: 'CLEANING',
   MAINTENANCE: 'MAINTENANCE',
 } as const;
 
@@ -269,6 +271,8 @@ export const PermissionCode = {
   HOTEL_STAY_EXTEND: 'hotel:stay:extend',
   HOTEL_STAY_CHECK_OUT: 'hotel:stay:check-out',
   HOTEL_ORDER_CANCEL: 'hotel:order:cancel',
+  HOTEL_BILL_QUERY: 'hotel:bill:query',
+  HOTEL_DEDUCT: 'hotel:deduct',
   SYSTEM_USER_QUERY: 'system:user:query',
   SYSTEM_USER_SAVE: 'system:user:save',
   SYSTEM_ROLE_QUERY: 'system:role:query',

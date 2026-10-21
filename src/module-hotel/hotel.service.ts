@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import { mkdir, unlink, writeFile } from 'fs/promises';
 import { join } from 'path';
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import Decimal from 'decimal.js';
 import { DataSource, FindOptionsWhere, In, Repository } from 'typeorm';
@@ -19,6 +19,7 @@ import {
   NumberBoundary,
 } from '../common/constants';
 import { ShopContext } from '../common/context/shop-context';
+import { MiniappSignService } from '../common/crypto/miniapp-sign.service';
 import { BusinessException } from '../common/exceptions/business.exception';
 import { PageResult } from '../common/interfaces/page-result';
 import {
@@ -35,6 +36,7 @@ import {
   toIdentifier,
   toMoneyString,
 } from '../common/tools';
+import { ChatUserClient } from '../core/member/chat-user.client';
 import { MemberBalanceService } from '../core/member/member-balance.service';
 import { MemberQueryService } from '../core/member/member-query.service';
 import { NotifyService } from '../core/notify/notify.service';
@@ -141,6 +143,8 @@ export class HotelService {
     private readonly shopService: ShopService,
     private readonly memberBalanceService: MemberBalanceService,
     private readonly memberQueryService: MemberQueryService,
+    private readonly chatUserClient: ChatUserClient,
+    private readonly miniappSignService: MiniappSignService,
     private readonly notifyService: NotifyService,
   ) {}
 
@@ -306,6 +310,79 @@ export class HotelService {
   }
 
   /**
+   * 把空闲、打扫中或维修的房间改成另一种。在住房必须先退房，不能从这里改成在住。
+   */
+  async updateRoomStatus(roomId: string, roomStatus: string): Promise<void> {
+    // 1. 只接受空闲、打扫中和维修
+    if (roomStatus !== HotelRoomStatus.IDLE && roomStatus !== HotelRoomStatus.CLEANING && roomStatus !== HotelRoomStatus.MAINTENANCE) {
+      throw new BusinessException('只能改为空闲、打扫中或维修');
+    }
+    // 2. 房间必须存在，在住不能从这里改
+    const hotelRoom = await this.hotelRoomRepository.findOne({ where: { id: roomId } });
+    if (isEmpty(hotelRoom)) {
+      throw new BusinessException('房间不存在');
+    }
+    if (hotelRoom.roomStatus === HotelRoomStatus.OCCUPIED) {
+      throw new BusinessException('在住房请先退房');
+    }
+    // 3. 写入新房态
+    hotelRoom.roomStatus = roomStatus;
+    await this.hotelRoomRepository.save(hotelRoom);
+  }
+
+  /**
+   * 解开付款码，再按里面的用户名找到余额账户。
+   */
+  async findMemberByPayQr(cipherText: string) {
+    await this.requireEnabledHotelShop();
+    const username = this.miniappSignService.readPayRechargeUsername(cipherText);
+    return this.requireMemberByUsername(username);
+  }
+
+  /**
+   * 按当前酒店门店扣减会员余额，并返回扣完后的会员资料。不关联预订单。
+   */
+  async deductMemberBalance(memberId: string, amount: string | number, remark: string, operatorId: string) {
+    if (!isPositiveMoney(amount)) {
+      throw new BusinessException('扣款金额必须大于0');
+    }
+    const shopId = await this.requireEnabledHotelShop();
+    const cleanedRemark = remark.trim();
+    await this.dataSource.transaction(async (entityManager) => {
+      await this.memberBalanceService.deductBalance({
+        entityManager,
+        memberId,
+        shopId,
+        amount: toMoneyString(amount),
+        bizType: FinanceBizType.HOTEL_IN_STORE,
+        bizOrderNo: '',
+        operatorId,
+        remark: isEmpty(cleanedRemark) ? '酒店扣款' : cleanedRemark,
+      });
+    });
+    const memberAccount = await this.memberQueryService.findById(memberId);
+    if (isEmpty(memberAccount)) {
+      throw new BusinessException('没有找到会员');
+    }
+    return this.memberQueryService.toMemberView(memberAccount);
+  }
+
+  /**
+   * 打扫完成后把房间改回空闲。
+   */
+  async finishCleaning(roomId: string): Promise<void> {
+    const hotelRoom = await this.hotelRoomRepository.findOne({ where: { id: roomId } });
+    if (isEmpty(hotelRoom)) {
+      throw new BusinessException('房间不存在');
+    }
+    if (hotelRoom.roomStatus !== HotelRoomStatus.CLEANING) {
+      throw new BusinessException('房间不是打扫中');
+    }
+    hotelRoom.roomStatus = HotelRoomStatus.IDLE;
+    await this.hotelRoomRepository.save(hotelRoom);
+  }
+
+  /**
    * 修改当前门店房间。
    */
   async updateRoom(roomId: string, command: SaveHotelRoomCommand): Promise<HotelRoom> {
@@ -456,6 +533,85 @@ export class HotelService {
   }
 
   /**
+   * 现场订房。入住日是今天就立即入住这间房，晚于今天只创建预订。
+   */
+  async walkIn(roomId: string, keyword: string, checkInDate: string, checkOutDate: string): Promise<{ checkedIn: boolean }> {
+    // 1. 离店日必须晚于入住日，入住日不能早于今天
+    if (checkOutDate <= checkInDate) {
+      throw new BusinessException('离店日期必须晚于入住日期');
+    }
+    const todayText = formatShanghaiDate(new Date());
+    if (checkInDate < todayText) {
+      throw new BusinessException('入住日期不能早于今天');
+    }
+    // 2. 聊天用户没有余额账户时先开户。找不到或已停用则失败
+    const memberAccount = await this.requireWalkInMember(keyword);
+    const memberId = toIdentifier(memberAccount.id);
+    const checkedIn = checkInDate === todayText;
+    await this.dataSource.transaction(async (entityManager) => {
+      // 3. 锁定房间，必须空闲
+      const hotelRoom = await entityManager
+        .getRepository(HotelRoom)
+        .createQueryBuilder('hotelRoom')
+        .setLock('pessimistic_write')
+        .where('hotelRoom.id = :roomId', { roomId })
+        .getOne();
+      if (isEmpty(hotelRoom)) {
+        throw new BusinessException('房间不存在');
+      }
+      if (hotelRoom.roomStatus !== HotelRoomStatus.IDLE) {
+        throw new BusinessException('房间不是空闲状态');
+      }
+      // 4. 房型必须可售，并写入预订
+      const shop = await this.shopService.findEnabledShopInManager(entityManager, toIdentifier(hotelRoom.shopId), ShopType.HOTEL);
+      const shopId = toIdentifier(shop.id);
+      const hotelRoomType = await entityManager.getRepository(HotelRoomType).findOne({
+        where: { id: toIdentifier(hotelRoom.roomTypeId), shopId, status: RecordStatus.ENABLED },
+      });
+      if (isEmpty(hotelRoomType)) {
+        throw new BusinessException('房型不存在或已停用');
+      }
+      const bookingOrder = new HotelBookingOrder();
+      bookingOrder.shopId = shopId;
+      bookingOrder.orderNo = createBusinessNo(BusinessNoPrefix.HOTEL_BOOKING);
+      bookingOrder.memberId = memberId;
+      bookingOrder.roomTypeId = toIdentifier(hotelRoomType.id);
+      bookingOrder.roomId = null;
+      bookingOrder.checkInDate = checkInDate;
+      bookingOrder.checkOutDate = checkOutDate;
+      bookingOrder.amount = toMoneyString(NumberBoundary.ZERO);
+      bookingOrder.orderStatus = HotelOrderStatus.BOOKED;
+      const savedOrder = await entityManager.getRepository(HotelBookingOrder).save(bookingOrder);
+      await this.notifyService.createMemberMessage(entityManager, {
+        shopId,
+        memberId,
+        title: '酒店预订成功',
+        content: `订单${savedOrder.orderNo}已预订，入住时再结算房费`,
+      });
+      if (checkedIn !== true) {
+        return;
+      }
+      // 5. 今天入住：占用房间并写入入住记录
+      hotelRoom.roomStatus = HotelRoomStatus.OCCUPIED;
+      await entityManager.getRepository(HotelRoom).save(hotelRoom);
+      savedOrder.roomId = toIdentifier(hotelRoom.id);
+      savedOrder.orderStatus = HotelOrderStatus.CHECKED_IN;
+      await entityManager.getRepository(HotelBookingOrder).save(savedOrder);
+      const stayRecord = new HotelStayRecord();
+      stayRecord.shopId = shopId;
+      stayRecord.bookingOrderId = toIdentifier(savedOrder.id);
+      stayRecord.roomId = toIdentifier(hotelRoom.id);
+      stayRecord.memberId = memberId;
+      stayRecord.stayStatus = HotelStayStatus.IN_HOUSE;
+      stayRecord.actualCheckIn = formatShanghaiDateTime(new Date());
+      stayRecord.actualCheckOut = null;
+      stayRecord.plannedCheckOutDate = checkOutDate;
+      await entityManager.getRepository(HotelStayRecord).save(stayRecord);
+    });
+    return { checkedIn };
+  }
+
+  /**
    * 续住。只延长离店日期，不扣款。
    */
   async extendStay(bookingOrderId: string, checkOutDate: string): Promise<void> {
@@ -539,7 +695,7 @@ export class HotelService {
         operatorId,
         remark: `酒店房费${nightCount}晚`,
       });
-      // 4. 完成退房并释放房间
+      // 4. 完成退房，房间改为打扫中
       bookingOrder.amount = roomFeeText;
       bookingOrder.orderStatus = HotelOrderStatus.CHECKED_OUT;
       bookingOrder.checkOutDate = checkOutDateText;
@@ -552,7 +708,7 @@ export class HotelService {
           where: { id: toIdentifier(bookingOrder.roomId) },
         });
         if (!isEmpty(hotelRoom)) {
-          hotelRoom.roomStatus = HotelRoomStatus.IDLE;
+          hotelRoom.roomStatus = HotelRoomStatus.CLEANING;
           await entityManager.getRepository(HotelRoom).save(hotelRoom);
         }
       }
@@ -732,6 +888,56 @@ export class HotelService {
       throw new BusinessException('房型不存在');
     }
     return hotelRoomType;
+  }
+
+  /**
+   * 当前请求必须选中一家启用中的酒店。
+   */
+  private async requireEnabledHotelShop(): Promise<string> {
+    const shopId = ShopContext.getCurrentShopId();
+    if (isEmpty(shopId)) {
+      throw new BusinessException('请选择门店后再扣款');
+    }
+    const shop = await this.shopService.findEnabledShop(shopId, ShopType.HOTEL);
+    return toIdentifier(shop.id);
+  }
+
+  /**
+   * 按用户名读取余额账户。没有则拒绝。
+   */
+  private async requireMemberByUsername(username: string) {
+    const memberAccount = await this.memberQueryService.findByUsername(username);
+    if (isEmpty(memberAccount)) {
+      throw new BusinessException('没有找到会员');
+    }
+    return this.memberQueryService.toMemberView(memberAccount);
+  }
+
+  /**
+   * 按用户名、手机号或邮箱找到可订房的会员。没有账户就开一个余额为 0 的启用账户。
+   */
+  private async requireWalkInMember(keyword: string) {
+    const cleanedKeyword = keyword.trim();
+    if (isEmpty(cleanedKeyword)) {
+      throw new BusinessException('没有找到会员');
+    }
+    try {
+      const chatUserProfile = await this.chatUserClient.findByKeyword(cleanedKeyword);
+      const contact = this.chatUserClient.resolveContact(chatUserProfile.phone, chatUserProfile.email);
+      try {
+        return await this.memberQueryService.ensureEnabledByUsername(chatUserProfile.username, contact, chatUserProfile.nickname);
+      } catch (error) {
+        if (error instanceof UnauthorizedException) {
+          throw new BusinessException('会员已停用');
+        }
+        throw error;
+      }
+    } catch (error) {
+      if (error instanceof BusinessException && error.message === '未找到该用户') {
+        throw new BusinessException('没有找到会员');
+      }
+      throw error;
+    }
   }
 
   /**
