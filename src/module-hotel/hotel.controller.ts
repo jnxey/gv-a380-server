@@ -174,6 +174,16 @@ export class CreateHotelBookingDto {
   checkOutDate: string;
 
   @IsString()
+  @IsNotEmpty({ message: '请填写预定人' })
+  @MaxLength(HotelWalkInContact.MAX_LENGTH, { message: '预定人过长' })
+  guestName: string;
+
+  @IsString()
+  @IsNotEmpty({ message: '请填写联系方式' })
+  @MaxLength(HotelWalkInContact.MAX_LENGTH, { message: '联系方式过长' })
+  contact: string;
+
+  @IsString()
   @IsNotEmpty()
   cipherText: string;
 }

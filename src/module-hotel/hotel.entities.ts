@@ -105,6 +105,9 @@ export class HotelBookingOrder {
   @Column({ type: 'varchar', length: 64, default: '' })
   contact: string;
 
+  @Column({ type: 'varchar', length: 64, default: '' })
+  guestName: string;
+
   @Column({ type: 'bigint', unsigned: true })
   roomTypeId: string;
 

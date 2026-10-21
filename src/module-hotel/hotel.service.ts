@@ -54,6 +54,8 @@ export interface CreateHotelBookingCommand {
   roomTypeId: string;
   checkInDate: string;
   checkOutDate: string;
+  guestName: string;
+  contact: string;
   cipherText: string;
 }
 
@@ -115,6 +117,7 @@ export interface HotelBookingOrderView {
   memberId: string;
   username: string;
   contact: string;
+  guestName: string;
   roomTypeId: string;
   typeName: string;
   roomId: string;
@@ -422,6 +425,22 @@ export class HotelService {
     if (command.checkOutDate <= command.checkInDate) {
       throw new BusinessException('离店日期必须晚于入住日期');
     }
+    // 1. 预定人和联系方式去空白后不能空，也不能超过订单字段长度
+    const guestNameText = isEmpty(command.guestName) ? '' : command.guestName.trim();
+    const contactText = isEmpty(command.contact) ? '' : command.contact.trim();
+    if (isEmpty(guestNameText)) {
+      throw new BusinessException('请填写预定人');
+    }
+    if (isEmpty(contactText)) {
+      throw new BusinessException('请填写联系方式');
+    }
+    if (guestNameText.length > HotelWalkInContact.MAX_LENGTH) {
+      throw new BusinessException('预定人过长');
+    }
+    if (contactText.length > HotelWalkInContact.MAX_LENGTH) {
+      throw new BusinessException('联系方式过长');
+    }
+    // 2. 校验安全密钥属于当前会员
     const securityKeyUsername = this.miniappSignService.readConsumerDoorLockUsername(command.cipherText);
     const memberAccount = await this.memberQueryService.findById(memberId);
     if (isEmpty(memberAccount) || memberAccount.username !== securityKeyUsername) {
@@ -446,7 +465,8 @@ export class HotelService {
       bookingOrder.shopId = shopId;
       bookingOrder.orderNo = createBusinessNo(BusinessNoPrefix.HOTEL_BOOKING);
       bookingOrder.memberId = memberId;
-      bookingOrder.contact = '';
+      bookingOrder.contact = contactText;
+      bookingOrder.guestName = guestNameText;
       bookingOrder.roomTypeId = toIdentifier(hotelRoomType.id);
       bookingOrder.roomId = null;
       bookingOrder.checkInDate = command.checkInDate;
@@ -606,6 +626,7 @@ export class HotelService {
       bookingOrder.orderNo = createBusinessNo(BusinessNoPrefix.HOTEL_BOOKING);
       bookingOrder.memberId = null;
       bookingOrder.contact = contactText;
+      bookingOrder.guestName = '';
       bookingOrder.roomTypeId = toIdentifier(hotelRoomType.id);
       bookingOrder.roomId = null;
       bookingOrder.checkInDate = checkInDate;
@@ -1039,6 +1060,7 @@ export class HotelService {
         memberId: toIdentifier(bookingOrder.memberId),
         username: isEmpty(memberAccount) ? '' : memberAccount.username,
         contact: isEmpty(bookingOrder.contact) ? '' : bookingOrder.contact,
+        guestName: isEmpty(bookingOrder.guestName) ? '' : bookingOrder.guestName,
         roomTypeId: toIdentifier(bookingOrder.roomTypeId),
         typeName: isEmpty(hotelRoomType) ? '' : hotelRoomType.typeName,
         roomId: toIdentifier(bookingOrder.roomId),
