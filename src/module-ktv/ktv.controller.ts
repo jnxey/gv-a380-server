@@ -7,6 +7,7 @@ import { PageQueryDto } from '../common/dto/page-query.dto';
 import { CurrentAccount } from '../common/decorators/current-account.decorator';
 import { RequireModule, RequirePermission, RequiresShop } from '../common/decorators/auth.decorators';
 import { LoginAccountContext } from '../common/interfaces/login-account-context';
+import { FinanceBillService } from '../core/finance/finance-bill.service';
 import { KtvService } from './ktv.service';
 
 /**
@@ -183,7 +184,19 @@ export class KtvDeductDto {
 @RequireModule(ModuleCode.KTV)
 @RequiresShop()
 export class KtvAdminController {
-  constructor(private readonly ktvService: KtvService) {}
+  constructor(
+    private readonly ktvService: KtvService,
+    private readonly financeBillService: FinanceBillService,
+  ) {}
+
+  /**
+   * 查询当前门店最近的店内消费和扫码付款，供前台到账提示。
+   */
+  @Get('payment-notices')
+  @RequirePermission(PermissionCode.KTV_ROOM_QUERY)
+  listPaymentNotices() {
+    return this.financeBillService.listRecentPaymentNotices();
+  }
 
   /**
    * 查询当前门店全部包厢类型。

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { FinanceBizType } from '../../common/constants';
+import { In, Repository } from 'typeorm';
+import { FinanceBizType, PageSetting } from '../../common/constants';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { PageResult } from '../../common/interfaces/page-result';
 import { isEmpty, isOneOf, resolvePage } from '../../common/tools';
@@ -38,6 +38,17 @@ export class FinanceBillService {
       page: pageResult.page,
       pageSize: pageResult.pageSize,
     };
+  }
+
+  /**
+   * 查询当前门店最近的店内消费和扫码付款。门店条件由数据权限过滤器自动追加。
+   */
+  async listRecentPaymentNotices(): Promise<FinanceBill[]> {
+    return this.financeBillRepository.find({
+      where: { bizType: In([FinanceBizType.KTV_IN_STORE, FinanceBizType.SHOP_SCAN_PAY]) },
+      order: { id: 'DESC' },
+      take: PageSetting.PAYMENT_NOTICE_SIZE,
+    });
   }
 
   /**
