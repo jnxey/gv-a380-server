@@ -172,6 +172,10 @@ export class CreateHotelBookingDto {
 
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   checkOutDate: string;
+
+  @IsString()
+  @IsNotEmpty()
+  cipherText: string;
 }
 
 /**

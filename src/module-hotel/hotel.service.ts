@@ -54,6 +54,7 @@ export interface CreateHotelBookingCommand {
   roomTypeId: string;
   checkInDate: string;
   checkOutDate: string;
+  cipherText: string;
 }
 
 /**
@@ -163,14 +164,15 @@ export class HotelService {
   }
 
   /**
-   * 小程序查询某酒店可预订房型。
+   * 小程序查询某酒店可预订房型，并带上图片。
    */
-  async listEnabledRoomTypes(shopId: string): Promise<HotelRoomType[]> {
+  async listEnabledRoomTypes(shopId: string): Promise<HotelRoomTypeView[]> {
     const shop = await this.shopService.findEnabledShop(shopId, ShopType.HOTEL);
-    return this.hotelRoomTypeRepository.find({
+    const roomTypeList = await this.hotelRoomTypeRepository.find({
       where: { shopId: toIdentifier(shop.id), status: RecordStatus.ENABLED },
       order: { id: 'ASC' },
     });
+    return this.toRoomTypeViewList(roomTypeList);
   }
 
   /**
@@ -414,11 +416,16 @@ export class HotelService {
   }
 
   /**
-   * 创建酒店预订。此时不扣会员余额。
+   * 创建酒店预订，并在同一事务内按晚数扣减会员余额。
    */
   async createBooking(memberId: string, command: CreateHotelBookingCommand): Promise<HotelBookingOrder> {
     if (command.checkOutDate <= command.checkInDate) {
       throw new BusinessException('离店日期必须晚于入住日期');
+    }
+    const securityKeyUsername = this.miniappSignService.readConsumerDoorLockUsername(command.cipherText);
+    const memberAccount = await this.memberQueryService.findById(memberId);
+    if (isEmpty(memberAccount) || memberAccount.username !== securityKeyUsername) {
+      throw new BusinessException('安全密钥无效');
     }
     return this.dataSource.transaction(async (entityManager) => {
       // 1. 校验酒店门店
@@ -431,7 +438,10 @@ export class HotelService {
       if (isEmpty(hotelRoomType)) {
         throw new BusinessException('房型不存在或已停用');
       }
-      // 3. 写入未支付的预订订单
+      // 3. 房费等于每晚价格乘以晚数
+      const nightCount = calculateNightCount(command.checkInDate, command.checkOutDate);
+      const roomFeeText = toMoneyString(new Decimal(hotelRoomType.price).times(nightCount));
+      // 4. 写入已计价的预订订单
       const bookingOrder = new HotelBookingOrder();
       bookingOrder.shopId = shopId;
       bookingOrder.orderNo = createBusinessNo(BusinessNoPrefix.HOTEL_BOOKING);
@@ -441,14 +451,25 @@ export class HotelService {
       bookingOrder.roomId = null;
       bookingOrder.checkInDate = command.checkInDate;
       bookingOrder.checkOutDate = command.checkOutDate;
-      bookingOrder.amount = toMoneyString(NumberBoundary.ZERO);
+      bookingOrder.amount = roomFeeText;
       bookingOrder.orderStatus = HotelOrderStatus.BOOKED;
       const savedOrder = await entityManager.getRepository(HotelBookingOrder).save(bookingOrder);
+      // 5. 扣会员余额。失败会连同订单一起回滚
+      await this.memberBalanceService.deductBalance({
+        entityManager,
+        memberId,
+        shopId,
+        amount: savedOrder.amount,
+        bizType: FinanceBizType.HOTEL_ROOM_FEE,
+        bizOrderNo: savedOrder.orderNo,
+        operatorId: null,
+        remark: '酒店预订',
+      });
       await this.notifyService.createMemberMessage(entityManager, {
         shopId,
         memberId,
         title: '酒店预订成功',
-        content: `订单${savedOrder.orderNo}已预订，退房不扣款`,
+        content: `订单${savedOrder.orderNo}已预订，已扣房费${savedOrder.amount}`,
       });
       return savedOrder;
     });
@@ -695,8 +716,10 @@ export class HotelService {
       const nightCount = calculateNightCount(formatShanghaiDate(actualCheckInDate), checkOutDateText);
       const roomFee = new Decimal(hotelRoomType.price).times(nightCount);
       const roomFeeText = toMoneyString(roomFee);
-      // 3. 完成退房，房间改为打扫中。房费只记在订单上，不扣会员余额
-      bookingOrder.amount = roomFeeText;
+      // 3. 完成退房，房间改为打扫中。不扣会员余额。已有房费的预订不再改写金额；散客金额为 0 时只记房费
+      if (!isPositiveMoney(bookingOrder.amount)) {
+        bookingOrder.amount = roomFeeText;
+      }
       bookingOrder.orderStatus = HotelOrderStatus.CHECKED_OUT;
       bookingOrder.checkOutDate = checkOutDateText;
       await entityManager.getRepository(HotelBookingOrder).save(bookingOrder);
