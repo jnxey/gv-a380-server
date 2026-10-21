@@ -7,6 +7,7 @@ import { RequireModule, RequirePermission, RequiresShop } from '../common/decora
 import { CurrentAccount } from '../common/decorators/current-account.decorator';
 import { LoginAccountContext } from '../common/interfaces/login-account-context';
 import { ShopService } from '../core/shop/shop.service';
+import { KtvService } from './ktv.service';
 
 /**
  * 营业时间。结束必须晚于开始。
@@ -172,11 +173,30 @@ export class KtvShopAdminController {
 }
 
 /**
+ * 扫门店收款码付款。
+ */
+export class ShopPayDto {
+  @IsString()
+  @IsNotEmpty()
+  shopPayCode: string;
+
+  @IsNotEmpty()
+  amount: string | number;
+
+  @IsString()
+  @IsNotEmpty()
+  securityKeyCipher: string;
+}
+
+/**
  * 小程序选择门店。这是消费选店，不是后台数据权限。
  */
 @Controller('app/shops')
 export class ShopAppController {
-  constructor(private readonly shopService: ShopService) {}
+  constructor(
+    private readonly shopService: ShopService,
+    private readonly ktvService: KtvService,
+  ) {}
 
   /**
    * 按门店类型列出启用门店。
@@ -185,5 +205,13 @@ export class ShopAppController {
   async listShops(@Query() appShopQueryDto: AppShopQueryDto) {
     const shopList = await this.shopService.listEnabledByType(appShopQueryDto.shopType);
     return this.shopService.toShopViewList(shopList);
+  }
+
+  /**
+   * 扫门店收款码付款。
+   */
+  @Post('pay')
+  async payShop(@Body() shopPayDto: ShopPayDto, @CurrentAccount() loginAccountContext: LoginAccountContext) {
+    return this.ktvService.payByShopQr(loginAccountContext.accountId, shopPayDto.shopPayCode, shopPayDto.amount, shopPayDto.securityKeyCipher);
   }
 }

@@ -85,6 +85,15 @@ export const FinanceBizType = {
   KTV_IN_STORE: 'KTV_IN_STORE',
   HOTEL_ROOM_FEE: 'HOTEL_ROOM_FEE',
   REFUND: 'REFUND',
+  SHOP_SCAN_PAY: 'SHOP_SCAN_PAY',
+} as const;
+
+/**
+ * 门店收款码。内容是前缀加门店编码。
+ */
+export const ShopPayQr = {
+  PREFIX: 'GP_',
+  REMARK: '门店扫码付款',
 } as const;
 
 /**

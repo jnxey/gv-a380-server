@@ -18,6 +18,7 @@ import {
   KtvOrderStatus,
   KtvPendingVerifyWindow,
   PageSetting,
+  ShopPayQr,
   RecordStatus,
   ShopImageLimit,
   ShopImageMime,
@@ -425,6 +426,50 @@ export class KtvService {
       throw new BusinessException('没有找到会员');
     }
     return this.memberQueryService.toMemberView(memberAccount);
+  }
+
+  /**
+   * 会员扫门店收款码付款。校验安全密钥后，按该门店扣余额。
+   */
+  async payByShopQr(memberId: string, shopPayCode: string, amount: string | number, securityKeyCipher: string): Promise<{ shopName: string; amount: string }> {
+    // 1. 金额必须大于 0
+    if (!isPositiveMoney(amount)) {
+      throw new BusinessException('扣款金额必须大于0');
+    }
+    // 2. 收款码必须以 GP_ 开头，后面是门店编码
+    const trimmedShopPayCode = shopPayCode.trim();
+    if (!trimmedShopPayCode.startsWith(ShopPayQr.PREFIX)) {
+      throw new BusinessException('请扫描门店收款码');
+    }
+    const shopCode = trimmedShopPayCode.slice(ShopPayQr.PREFIX.length).trim();
+    if (isEmpty(shopCode)) {
+      throw new BusinessException('请扫描门店收款码');
+    }
+    // 3. 安全密钥必须属于当前会员
+    const securityKeyUsername = this.miniappSignService.readConsumerDoorLockUsername(securityKeyCipher);
+    const memberAccount = await this.memberQueryService.findById(memberId);
+    if (isEmpty(memberAccount) || memberAccount.username !== securityKeyUsername) {
+      throw new BusinessException('安全密钥无效');
+    }
+    // 4. 门店必须存在且启用
+    await this.shopService.findEnabledShopByCode(shopCode);
+    const paidAmount = toMoneyString(amount);
+    // 5. 事务内再次确认门店仍启用，再扣余额
+    const paidShop = await this.dataSource.transaction(async (entityManager) => {
+      const shop = await this.shopService.findEnabledShopByCodeInManager(entityManager, shopCode);
+      await this.memberBalanceService.deductBalance({
+        entityManager,
+        memberId,
+        shopId: toIdentifier(shop.id),
+        amount: paidAmount,
+        bizType: FinanceBizType.SHOP_SCAN_PAY,
+        bizOrderNo: '',
+        operatorId: null,
+        remark: ShopPayQr.REMARK,
+      });
+      return shop;
+    });
+    return { shopName: paidShop.shopName, amount: paidAmount };
   }
 
   /**

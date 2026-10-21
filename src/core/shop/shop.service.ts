@@ -85,6 +85,32 @@ export class ShopService {
   }
 
   /**
+   * 按门店编码读取启用中的门店。编码全表唯一，不区分门店类型。
+   */
+  async findEnabledShopByCode(shopCode: string): Promise<Shop> {
+    const shop = await this.shopRepository.findOne({
+      where: { shopCode, status: RecordStatus.ENABLED },
+    });
+    if (isEmpty(shop)) {
+      throw new BusinessException('门店不存在或已停用');
+    }
+    return shop;
+  }
+
+  /**
+   * 在调用方事务中按门店编码读取启用门店。
+   */
+  async findEnabledShopByCodeInManager(entityManager: EntityManager, shopCode: string): Promise<Shop> {
+    const shop = await entityManager.getRepository(Shop).findOne({
+      where: { shopCode, status: RecordStatus.ENABLED },
+    });
+    if (isEmpty(shop)) {
+      throw new BusinessException('门店不存在或已停用');
+    }
+    return shop;
+  }
+
+  /**
    * 按主键读取门店，不限制启停。供门店类型校验使用。
    */
   async findById(shopId: string): Promise<Shop> {
