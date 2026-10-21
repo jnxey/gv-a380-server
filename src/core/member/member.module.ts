@@ -16,7 +16,7 @@ import { PointBalanceClient } from './point-balance.client';
  * 会员中台。只导出服务，不把 member_account 仓储暴露给业务模块。
  */
 @Module({
-  imports: [forwardRef(() => AuthModule), TypeOrmModule.forFeature([MemberAccount, MemberPointLog, FinanceBill]), FinanceModule, MerchantAuthModule],
+  imports: [forwardRef(() => AuthModule), TypeOrmModule.forFeature([MemberAccount, MemberPointLog, FinanceBill]), forwardRef(() => FinanceModule), MerchantAuthModule],
   controllers: [MemberAdminController, MemberAppController, MemberCommonController],
   providers: [MemberBalanceService, MemberQueryService, ChatUserClient, PointBalanceClient],
   exports: [MemberBalanceService, MemberQueryService, ChatUserClient],

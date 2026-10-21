@@ -12,6 +12,10 @@ export class FinanceBillQueryDto extends PageQueryDto {
   @IsOptional()
   @IsString()
   bizType?: string;
+
+  @IsOptional()
+  @IsString()
+  keyword?: string;
 }
 
 /**
@@ -29,6 +33,11 @@ export class FinanceBillController {
   @Get()
   @RequirePermission(PermissionCode.FINANCE_BILL_QUERY)
   pageBills(@Query() financeBillQueryDto: FinanceBillQueryDto) {
-    return this.financeBillService.pageBills(financeBillQueryDto.bizType || '', financeBillQueryDto.page, financeBillQueryDto.pageSize);
+    return this.financeBillService.pageBills(
+      financeBillQueryDto.bizType || '',
+      financeBillQueryDto.keyword || '',
+      financeBillQueryDto.page,
+      financeBillQueryDto.pageSize,
+    );
   }
 }
