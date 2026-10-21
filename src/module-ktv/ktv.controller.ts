@@ -1,12 +1,14 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Param, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Type } from 'class-transformer';
 import { ArrayNotEmpty, IsArray, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
 import { KtvBookingHour, KtvOccupyDuration, KtvOrderStatus, KtvPendingVerifyWindow, KtvRoomStatus, ModuleCode, PermissionCode, RecordStatus, ShopImageLimit } from '../common/constants';
 import { PageQueryDto } from '../common/dto/page-query.dto';
 import { CurrentAccount } from '../common/decorators/current-account.decorator';
+import { ShopContext } from '../common/context/shop-context';
 import { RequireModule, RequirePermission, RequiresShop } from '../common/decorators/auth.decorators';
 import { LoginAccountContext } from '../common/interfaces/login-account-context';
+import { isEmpty } from '../common/tools';
 import { FinanceBillService } from '../core/finance/finance-bill.service';
 import { KtvService } from './ktv.service';
 
@@ -178,6 +180,27 @@ export class KtvDeductDto {
 }
 
 /**
+ * 当前门店财务流水查询参数。门店不接收前端传入。
+ */
+export class KtvBillQueryDto extends PageQueryDto {
+  @IsOptional()
+  @IsString()
+  bizType?: string;
+
+  @IsOptional()
+  @IsString()
+  keyword?: string;
+
+  @IsOptional()
+  @IsString()
+  startDate?: string;
+
+  @IsOptional()
+  @IsString()
+  endDate?: string;
+}
+
+/**
  * 后台 KTV 接口。查询条件中的门店由 @RequiresShop 注入，不信任请求里的 shopId。
  */
 @Controller('admin/ktv')
@@ -188,6 +211,52 @@ export class KtvAdminController {
     private readonly ktvService: KtvService,
     private readonly financeBillService: FinanceBillService,
   ) {}
+
+  /**
+   * 读取本次请求已经校验过的当前门店。
+   */
+  private readCurrentShopId(): string {
+    const currentShopId = ShopContext.getCurrentShopId();
+    if (isEmpty(currentShopId)) {
+      throw new ForbiddenException('请选择门店');
+    }
+    return currentShopId;
+  }
+
+  /**
+   * 汇总当前门店的收入和支出。
+   */
+  @Get('bills/summary')
+  @RequirePermission(PermissionCode.KTV_BILL_QUERY)
+  summarizeBills(@Query() ktvBillQueryDto: KtvBillQueryDto) {
+    const currentShopId = this.readCurrentShopId();
+    return this.financeBillService.summarizeBills(
+      [currentShopId],
+      currentShopId,
+      ktvBillQueryDto.bizType || '',
+      ktvBillQueryDto.startDate || '',
+      ktvBillQueryDto.endDate || '',
+    );
+  }
+
+  /**
+   * 分页查询当前门店财务流水。
+   */
+  @Get('bills')
+  @RequirePermission(PermissionCode.KTV_BILL_QUERY)
+  pageBills(@Query() ktvBillQueryDto: KtvBillQueryDto) {
+    const currentShopId = this.readCurrentShopId();
+    return this.financeBillService.pageBills(
+      [currentShopId],
+      currentShopId,
+      ktvBillQueryDto.bizType || '',
+      ktvBillQueryDto.keyword || '',
+      ktvBillQueryDto.startDate || '',
+      ktvBillQueryDto.endDate || '',
+      ktvBillQueryDto.page,
+      ktvBillQueryDto.pageSize,
+    );
+  }
 
   /**
    * 查询当前门店最近的店内消费和扫码付款，供前台到账提示。
