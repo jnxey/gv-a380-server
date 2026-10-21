@@ -127,7 +127,7 @@ export interface HotelBookingOrderView {
 }
 
 /**
- * 酒店房型、房间、预订、入住、续住和退房结算。
+ * 酒店房型、房间、预订、入住、续住和退房。
  */
 @Injectable()
 export class HotelService {
@@ -343,11 +343,11 @@ export class HotelService {
   }
 
   /**
-   * 按当前酒店门店扣减会员余额，并返回扣完后的会员资料。不关联预订单。
+   * 按当前酒店门店从会员余额付款，并返回付完后的会员资料。不关联预订单。
    */
   async deductMemberBalance(memberId: string, amount: string | number, remark: string, operatorId: string) {
     if (!isPositiveMoney(amount)) {
-      throw new BusinessException('扣款金额必须大于0');
+      throw new BusinessException('付款金额必须大于0');
     }
     const shopId = await this.requireEnabledHotelShop();
     const cleanedRemark = remark.trim();
@@ -360,7 +360,7 @@ export class HotelService {
         bizType: FinanceBizType.HOTEL_IN_STORE,
         bizOrderNo: '',
         operatorId,
-        remark: isEmpty(cleanedRemark) ? '酒店扣款' : cleanedRemark,
+        remark: isEmpty(cleanedRemark) ? '酒店付款' : cleanedRemark,
       });
     });
     const memberAccount = await this.memberQueryService.findById(memberId);
@@ -448,7 +448,7 @@ export class HotelService {
         shopId,
         memberId,
         title: '酒店预订成功',
-        content: `订单${savedOrder.orderNo}已预订，入住时再结算房费`,
+        content: `订单${savedOrder.orderNo}已预订，退房不扣款`,
       });
       return savedOrder;
     });
@@ -647,7 +647,7 @@ export class HotelService {
   }
 
   /**
-   * 退房结算。按实际入住晚数乘房型单价，调用 core 扣房费。
+   * 退房。按实际入住晚数把房费记到订单上，不扣会员余额，房间改为打扫中。
    */
   async checkOut(bookingOrderId: string, operatorId: string): Promise<void> {
     await this.dataSource.transaction(async (entityManager) => {
@@ -673,31 +673,29 @@ export class HotelService {
       if (isEmpty(stayRecord) || isEmpty(stayRecord.actualCheckIn)) {
         throw new BusinessException('入住记录不存在');
       }
-      // 2. 用实际入住日和今天计算晚数，再乘当前房型单价
+      // 2. 实际入住时间读出来是 Date，先转成日期再算晚数，再乘当前房型单价
       const hotelRoomType = await entityManager.getRepository(HotelRoomType).findOne({
         where: { id: toIdentifier(bookingOrder.roomTypeId) },
       });
       if (isEmpty(hotelRoomType)) {
         throw new BusinessException('房型不存在');
       }
+      const actualCheckInValue: unknown = stayRecord.actualCheckIn;
+      let actualCheckInDate = new Date();
+      if (actualCheckInValue instanceof Date) {
+        actualCheckInDate = new Date(actualCheckInValue.getTime());
+      } else {
+        const actualCheckInText = String(actualCheckInValue).trim();
+        actualCheckInDate = new Date(actualCheckInText.replace(' ', 'T'));
+      }
+      if (Number.isNaN(actualCheckInDate.getTime())) {
+        throw new BusinessException('入住时间不正确');
+      }
       const checkOutDateText = formatShanghaiDate(new Date());
-      const nightCount = calculateNightCount(String(stayRecord.actualCheckIn), checkOutDateText);
+      const nightCount = calculateNightCount(formatShanghaiDate(actualCheckInDate), checkOutDateText);
       const roomFee = new Decimal(hotelRoomType.price).times(nightCount);
       const roomFeeText = toMoneyString(roomFee);
-      // 3. 有会员才扣房费。现场入住没有会员，只把房费记在订单上
-      if (isEmpty(bookingOrder.memberId) !== true) {
-        await this.memberBalanceService.deductBalance({
-          entityManager,
-          memberId: toIdentifier(bookingOrder.memberId),
-          shopId: toIdentifier(bookingOrder.shopId),
-          amount: roomFeeText,
-          bizType: FinanceBizType.HOTEL_ROOM_FEE,
-          bizOrderNo: bookingOrder.orderNo,
-          operatorId,
-          remark: `酒店房费${nightCount}晚`,
-        });
-      }
-      // 4. 完成退房，房间改为打扫中
+      // 3. 完成退房，房间改为打扫中。房费只记在订单上，不扣会员余额
       bookingOrder.amount = roomFeeText;
       bookingOrder.orderStatus = HotelOrderStatus.CHECKED_OUT;
       bookingOrder.checkOutDate = checkOutDateText;
@@ -898,7 +896,7 @@ export class HotelService {
   private async requireEnabledHotelShop(): Promise<string> {
     const shopId = ShopContext.getCurrentShopId();
     if (isEmpty(shopId)) {
-      throw new BusinessException('请选择门店后再扣款');
+      throw new BusinessException('请选择门店后再付款');
     }
     const shop = await this.shopService.findEnabledShop(shopId, ShopType.HOTEL);
     return toIdentifier(shop.id);

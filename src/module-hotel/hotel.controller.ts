@@ -215,6 +215,15 @@ export class HotelAdminController {
   }
 
   /**
+   * 查询当前门店最近的酒店店内消费和扫码付款，供前台到账提示。
+   */
+  @Get('payment-notices')
+  @RequirePermission(PermissionCode.HOTEL_ROOM_QUERY)
+  listPaymentNotices() {
+    return this.financeBillService.listRecentPaymentNotices([FinanceBizType.HOTEL_IN_STORE, FinanceBizType.SHOP_SCAN_PAY]);
+  }
+
+  /**
    * 分页查询当前门店财务流水。
    */
   @Get('bills')
@@ -409,7 +418,7 @@ export class HotelAdminController {
   }
 
   /**
-   * 退房并结算房费。
+   * 退房。房费记在订单上，不扣会员余额。
    */
   @Post('booking-orders/:bookingOrderId/check-out')
   @RequirePermission(PermissionCode.HOTEL_STAY_CHECK_OUT)

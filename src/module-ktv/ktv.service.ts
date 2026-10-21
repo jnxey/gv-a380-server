@@ -442,11 +442,11 @@ export class KtvService {
   }
 
   /**
-   * 按当前 KTV 门店扣减会员余额，并返回扣完后的会员资料。不关联预订单。
+   * 按当前 KTV 门店从会员余额付款，并返回付完后的会员资料。不关联预订单。
    */
   async deductMemberBalance(memberId: string, amount: string | number, remark: string, operatorId: string) {
     if (!isPositiveMoney(amount)) {
-      throw new BusinessException('扣款金额必须大于0');
+      throw new BusinessException('付款金额必须大于0');
     }
     const shopId = await this.requireEnabledKtvShop();
     const cleanedRemark = remark.trim();
@@ -459,7 +459,7 @@ export class KtvService {
         bizType: FinanceBizType.KTV_IN_STORE,
         bizOrderNo: '',
         operatorId,
-        remark: isEmpty(cleanedRemark) ? 'KTV扣款' : cleanedRemark,
+        remark: isEmpty(cleanedRemark) ? 'KTV付款' : cleanedRemark,
       });
     });
     const memberAccount = await this.memberQueryService.findById(memberId);
@@ -519,7 +519,7 @@ export class KtvService {
   private async requireEnabledKtvShop(): Promise<string> {
     const shopId = ShopContext.getCurrentShopId();
     if (isEmpty(shopId)) {
-      throw new BusinessException('请选择门店后再扣款');
+      throw new BusinessException('请选择门店后再付款');
     }
     const shop = await this.shopService.findEnabledShop(shopId, ShopType.KTV);
     return toIdentifier(shop.id);

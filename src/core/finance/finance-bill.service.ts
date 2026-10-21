@@ -263,11 +263,17 @@ export class FinanceBillService {
   }
 
   /**
-   * 查询当前门店最近的店内消费和扫码付款。门店条件由数据权限过滤器自动追加。
+   * 查询当前门店最近的到账流水。不传类型时仍是 KTV 店内消费和扫码付款。门店条件由数据权限过滤器自动追加。
    */
-  async listRecentPaymentNotices(): Promise<FinanceBill[]> {
+  async listRecentPaymentNotices(bizTypeList?: string[]): Promise<FinanceBill[]> {
+    const noticeBizTypeList = isEmpty(bizTypeList) ? [FinanceBizType.KTV_IN_STORE, FinanceBizType.SHOP_SCAN_PAY] : bizTypeList;
+    for (const bizType of noticeBizTypeList) {
+      if (isOneOf(bizType, Object.values(FinanceBizType)) !== true) {
+        throw new BusinessException('流水类型不正确');
+      }
+    }
     return this.financeBillRepository.find({
-      where: { bizType: In([FinanceBizType.KTV_IN_STORE, FinanceBizType.SHOP_SCAN_PAY]) },
+      where: { bizType: In(noticeBizTypeList) },
       order: { id: 'DESC' },
       take: PageSetting.PAYMENT_NOTICE_SIZE,
     });
