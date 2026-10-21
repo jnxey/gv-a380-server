@@ -1,13 +1,14 @@
 import { Body, Controller, Get, Post, Query, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
-import { ModuleCode, PermissionCode } from '../../common/constants';
+import Decimal from 'decimal.js';
+import { FinanceDirection, MerchantResponseCode, MerchantResponseMessage, ModuleCode, PermissionCode } from '../../common/constants';
 import { PageQueryDto } from '../../common/dto/page-query.dto';
 import { CurrentAccount } from '../../common/decorators/current-account.decorator';
 import { Public, RequireModule, RequirePermission, RequiresShop } from '../../common/decorators/auth.decorators';
 import { MerchantAuthGuard } from '../../common/merchant-auth/merchant-auth.guard';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { LoginAccountContext } from '../../common/interfaces/login-account-context';
-import { isEmpty } from '../../common/tools';
+import { isEmpty, toIdentifier } from '../../common/tools';
 import { MiniappSignService } from '../../common/crypto/miniapp-sign.service';
 import { FinanceBillService } from '../finance/finance-bill.service';
 import { MemberBalanceService } from './member-balance.service';
@@ -87,6 +88,15 @@ export class PointBalanceQueryDto {
   @IsString()
   @IsNotEmpty()
   account: string;
+}
+
+/**
+ * 付款/充值状态。正文是付款二维码密文。
+ */
+export class PaymentRechargeStatusDto {
+  @IsString()
+  @IsNotEmpty()
+  cipher_text: string;
 }
 
 /**
@@ -253,6 +263,8 @@ export class MemberCommonController {
   constructor(
     private readonly memberQueryService: MemberQueryService,
     private readonly pointBalanceClient: PointBalanceClient,
+    private readonly miniappSignService: MiniappSignService,
+    private readonly financeBillService: FinanceBillService,
   ) {}
 
   /**
@@ -275,5 +287,62 @@ export class MemberCommonController {
   async pointBalance(@Query() pointBalanceQueryDto: PointBalanceQueryDto) {
     const point = await this.pointBalanceClient.readPointBalance(pointBalanceQueryDto.account);
     return { point };
+  }
+
+  /**
+   * 按付款码查询这张码发出之后有没有充值或店内消费。没有时仍返回成功，供 App 继续轮询。
+   */
+  @Public()
+  @UseGuards(MerchantAuthGuard)
+  @Post('payment-recharge-status')
+  async paymentRechargeStatus(@Body() paymentRechargeStatusDto: PaymentRechargeStatusDto) {
+    const payRechargeIssue = this.miniappSignService.readPayRechargeIssue(paymentRechargeStatusDto.cipher_text);
+    if (isEmpty(payRechargeIssue)) {
+      return this.buildMerchantStatus(false, false, 0);
+    }
+    // 1. 还没有余额账户时，不可能已经产生充值或店内消费
+    const memberAccount = await this.memberQueryService.findByUsername(payRechargeIssue.username);
+    if (isEmpty(memberAccount)) {
+      return this.buildMerchantStatus(false, false, 0);
+    }
+    // 2. 只认这张码发出之后的最新一笔充值或店内消费
+    const financeBill = await this.financeBillService.findLatestPayRechargeBill(
+      toIdentifier(memberAccount.id),
+      this.formatIssuedAt(payRechargeIssue.issuedAtMilliseconds),
+    );
+    if (isEmpty(financeBill)) {
+      return this.buildMerchantStatus(false, false, 0);
+    }
+    const billAmount = new Decimal(financeBill.amount);
+    const signedAmount = financeBill.direction === FinanceDirection.OUT ? billAmount.negated() : billAmount;
+    return this.buildMerchantStatus(true, true, signedAmount.toNumber());
+  }
+
+  /**
+   * 组装 App 要的成功结构。code 用 1000，文案字段是 msg。
+   */
+  private buildMerchantStatus(find: boolean, done: boolean, amount: number) {
+    return {
+      code: MerchantResponseCode.SUCCESS,
+      msg: MerchantResponseMessage.SUCCESS,
+      data: {
+        find,
+        done,
+        amount,
+      },
+    };
+  }
+
+  /**
+   * 把付款码签发时刻格式化成本地时间，用来和流水创建时间比较。
+   */
+  private formatIssuedAt(issuedAtMilliseconds: number): string {
+    const issuedAt = new Date(issuedAtMilliseconds);
+    const monthText = String(issuedAt.getMonth() + 1).padStart(2, '0');
+    const dayText = String(issuedAt.getDate()).padStart(2, '0');
+    const hourText = String(issuedAt.getHours()).padStart(2, '0');
+    const minuteText = String(issuedAt.getMinutes()).padStart(2, '0');
+    const secondText = String(issuedAt.getSeconds()).padStart(2, '0');
+    return `${issuedAt.getFullYear()}-${monthText}-${dayText} ${hourText}:${minuteText}:${secondText}`;
   }
 }

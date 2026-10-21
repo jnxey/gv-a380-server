@@ -1,9 +1,9 @@
-import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
 import Redis from 'ioredis';
-import { MerchantAuthHeader, MerchantAuthSetting, RedisKey, RedisValue } from '../constants';
+import { MerchantAuthHeader, MerchantAuthPath, MerchantAuthSetting, RedisKey, RedisValue } from '../constants';
 import { BusinessException } from '../exceptions/business.exception';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { isEmpty } from '../tools';
@@ -91,7 +91,7 @@ export class MerchantAuthService {
     if (this.isSameSign(expectedSign, headerSign.toLowerCase()) !== true) {
       throw new UnauthorizedException('签名无效');
     }
-    await this.rememberNonce(headerAppId, headerNonce);
+    await this.rememberNonce(headerAppId, headerNonce, request.path);
   }
 
   /**
@@ -135,7 +135,7 @@ export class MerchantAuthService {
   }
 
   /**
-   * 组装 6 行待签名字符串。GET 的 body 固定用空串哈希。
+   * 组装 6 行待签名字符串。GET 和 HEAD 用空正文哈希，其它方法用原始正文字节。
    */
   private buildSignContent(request: Request, headerTimestamp: string, headerNonce: string): string {
     const canonicalQuery = this.buildCanonicalQueryString(request.query as Record<string, unknown>);
@@ -143,11 +143,26 @@ export class MerchantAuthService {
       request.method.toUpperCase(),
       request.path,
       canonicalQuery,
-      MerchantAuthSetting.EMPTY_BODY_SHA256,
+      this.resolveRequestBodySha256(request),
       headerTimestamp,
       headerNonce,
     ];
     return lineList.join(MerchantAuthQueryMark.LINE_SEPARATOR);
+  }
+
+  /**
+   * 计算参与签名的正文 SHA256。GET 和 HEAD 固定用空串哈希。
+   */
+  private resolveRequestBodySha256(request: Request): string {
+    const httpMethod = request.method.toUpperCase();
+    if (httpMethod === 'GET' || httpMethod === 'HEAD') {
+      return MerchantAuthSetting.EMPTY_BODY_SHA256;
+    }
+    const rawBody = (request as Request & { rawBody?: Buffer }).rawBody;
+    if (Buffer.isBuffer(rawBody) !== true || rawBody.length === 0) {
+      return MerchantAuthSetting.EMPTY_BODY_SHA256;
+    }
+    return createHash('sha256').update(rawBody).digest('hex');
   }
 
   /**
@@ -220,9 +235,9 @@ export class MerchantAuthService {
   }
 
   /**
-   * 签名通过后占用 Nonce。同一 Nonce 在时间窗口内不能再用。
+   * 签名通过后占用 Nonce。同一 Nonce 在时间窗口内不能再用。付款状态轮询除外。
    */
-  private async rememberNonce(headerAppId: string, headerNonce: string): Promise<void> {
+  private async rememberNonce(headerAppId: string, headerNonce: string, requestPath: string): Promise<void> {
     const nonceKey = `${RedisKey.MERCHANT_NONCE_PREFIX}${headerAppId}:${headerNonce}`;
     const stored = await this.redisClient.set(
       nonceKey,
@@ -231,8 +246,13 @@ export class MerchantAuthService {
       MerchantAuthSetting.TIMESTAMP_TOLERANCE_SECONDS,
       'NX',
     );
-    if (stored !== 'OK') {
-      throw new UnauthorizedException('签名无效');
+    if (stored === 'OK') {
+      return;
     }
+    // 付款状态页只签一次，然后每隔一秒用同一份签名继续查
+    if (requestPath === MerchantAuthPath.PAYMENT_RECHARGE_STATUS) {
+      return;
+    }
+    throw new UnauthorizedException('签名无效');
   }
 }

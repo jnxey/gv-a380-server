@@ -115,6 +115,43 @@ export class MiniappSignService {
   }
 
   /**
+   * 解开付款/充值二维码，返回用户名和签发时刻。无效或超过 5 分钟时返回空，不抛错。
+   */
+  readPayRechargeIssue(cipherText: string): { username: string; issuedAtMilliseconds: number } | null {
+    let decryptedText = '';
+    try {
+      decryptedText = this.decryptCipherText(cipherText);
+    } catch {
+      return null;
+    }
+    let parsedPayload: unknown;
+    try {
+      parsedPayload = JSON.parse(decryptedText);
+    } catch {
+      return null;
+    }
+    if (isObject(parsedPayload) !== true) {
+      return null;
+    }
+    if (parsedPayload.type !== MiniappSignType.PAY_RECHARGE) {
+      return null;
+    }
+    const username = parsedPayload.cot;
+    if (typeof username !== 'string' || isEmpty(username)) {
+      return null;
+    }
+    const timestamp = parsedPayload.tsp;
+    if (!isNumber(timestamp)) {
+      return null;
+    }
+    const issuedAtMilliseconds = Number(timestamp);
+    if (Math.abs(Date.now() - issuedAtMilliseconds) > PAY_QR_MAX_SKEW_MILLISECONDS) {
+      return null;
+    }
+    return { username, issuedAtMilliseconds };
+  }
+
+  /**
    * 解开安全密钥校验密文，返回里面的用户名。
    * 类型必须是安全密钥，时间戳偏离超过 5 分钟算无效。解不开时不返回明文。
    */

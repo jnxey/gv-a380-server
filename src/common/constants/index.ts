@@ -323,6 +323,13 @@ export const MerchantAuthHeader = {
 } as const;
 
 /**
+ * 允许重复使用同一次签名的商家路径。付款状态页会拿这一次签名连续查询。
+ */
+export const MerchantAuthPath = {
+  PAYMENT_RECHARGE_STATUS: '/api/v1/common/payment-recharge-status',
+} as const;
+
+/**
  * 商家验签。待签名字符串与聊天服务生成的 6 行一致。
  */
 export const MerchantAuthSetting = {
@@ -335,6 +342,20 @@ export const MerchantAuthSetting = {
   QUERY_KEY_MAX_LENGTH: 128,
   QUERY_VALUE_MAX_LENGTH: 2048,
   EMPTY_BODY_SHA256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+} as const;
+
+/**
+ * 给 App 商家接口的成功码。和后台接口的 0 不是同一套。
+ */
+export const MerchantResponseCode = {
+  SUCCESS: 1000,
+} as const;
+
+/**
+ * 给 App 商家接口的成功文案。字段名是 msg。
+ */
+export const MerchantResponseMessage = {
+  SUCCESS: 'ok',
 } as const;
 
 /**

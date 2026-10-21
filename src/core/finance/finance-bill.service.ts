@@ -1,7 +1,7 @@
 import { ForbiddenException, Inject, Injectable, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import Decimal from 'decimal.js';
-import { Between, FindOptionsWhere, In, Repository } from 'typeorm';
+import { Between, FindOptionsWhere, In, MoreThanOrEqual, Repository } from 'typeorm';
 import { FinanceBizType, FinanceDirection, PageSetting } from '../../common/constants';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { PageResult } from '../../common/interfaces/page-result';
@@ -276,5 +276,22 @@ export class FinanceBillService {
       page: pageResult.page,
       pageSize: pageResult.pageSize,
     };
+  }
+
+  /**
+   * 取付款码发出之后，该会员最新的一笔充值或店内消费。没有则返回空。
+   */
+  async findLatestPayRechargeBill(memberId: string, sinceAt: string): Promise<FinanceBill | null> {
+    if (isEmpty(memberId) || isEmpty(sinceAt)) {
+      return null;
+    }
+    return this.financeBillRepository.findOne({
+      where: {
+        memberId,
+        bizType: In([FinanceBizType.RECHARGE, FinanceBizType.KTV_IN_STORE]),
+        createdAt: MoreThanOrEqual(sinceAt),
+      },
+      order: { createdAt: 'DESC', id: 'DESC' },
+    });
   }
 }
