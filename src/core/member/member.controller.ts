@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { ModuleCode, PermissionCode } from '../../common/constants';
 import { PageQueryDto } from '../../common/dto/page-query.dto';
@@ -26,6 +26,15 @@ export class MemberQueryDto extends PageQueryDto {
   @IsOptional()
   @IsString()
   username?: string;
+}
+
+/**
+ * 按聊天用户名开余额账户。
+ */
+export class OpenMemberAccountDto {
+  @IsString()
+  @IsNotEmpty()
+  username: string;
 }
 
 /**
@@ -152,6 +161,27 @@ export class MemberAdminController {
     const chatUserProfile = await this.chatUserClient.findByKeyword(syncMemberProfileDto.username);
     const contact = this.chatUserClient.resolveContact(chatUserProfile.phone, chatUserProfile.email);
     return this.memberQueryService.syncProfile(syncMemberProfileDto.username, chatUserProfile.nickname, contact);
+  }
+
+  /**
+   * 聊天里有这个用户、A380 还没有余额账户时开户。已有启用账户直接返回，停用的不另建。
+   */
+  @Post('open')
+  @RequirePermission(PermissionCode.MEMBER_RECHARGE)
+  async openAccount(@Body() openMemberAccountDto: OpenMemberAccountDto) {
+    // 1. 用户名必须能在聊天服务里对上
+    const chatUserProfile = await this.chatUserClient.findByKeyword(openMemberAccountDto.username);
+    const contact = this.chatUserClient.resolveContact(chatUserProfile.phone, chatUserProfile.email);
+    // 2. 没有账户就建余额为 0 的启用账户，并带上昵称和联系方式
+    try {
+      const memberAccount = await this.memberQueryService.ensureEnabledByUsername(chatUserProfile.username, contact, chatUserProfile.nickname);
+      return this.memberQueryService.toMemberView(memberAccount);
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw new BusinessException('会员已停用');
+      }
+      throw error;
+    }
   }
 
   /**
