@@ -303,6 +303,7 @@ export class KtvService {
     const ktvRoom = new KtvRoom();
     ktvRoom.shopId = currentShopId;
     ktvRoom.roomStatus = KtvRoomStatus.IDLE;
+    ktvRoom.occupyExtendHours = 0;
     ktvRoom.sortOrder = await this.nextSortOrder(this.ktvRoomRepository);
     this.fillRoom(ktvRoom, command);
     try {
@@ -354,11 +355,51 @@ export class KtvService {
       const endAt = new Date();
       endAt.setHours(endAt.getHours() + durationHourCount);
       ktvRoom.occupyEndAt = this.formatDateTime(endAt);
+      ktvRoom.occupyExtendHours = 0;
     } else {
-      // 2. 离开使用中后不再提醒到点
+      // 2. 离开使用中后不再提醒到点，累计延长也清掉
       ktvRoom.occupyEndAt = null;
+      ktvRoom.occupyExtendHours = 0;
     }
     ktvRoom.roomStatus = roomStatus;
+    await this.ktvRoomRepository.save(ktvRoom);
+  }
+
+  /**
+   * 延长使用中包厢的结束时间，并累加延长小时。每次只加 1 小时。
+   */
+  async extendOccupy(roomId: string, durationHours: number): Promise<void> {
+    const durationHourCount = Number(durationHours);
+    if (!isNumber(durationHours) || durationHourCount !== KtvOccupyDuration.EXTEND_HOURS) {
+      throw new BusinessException(`每次只能延长${KtvOccupyDuration.EXTEND_HOURS}小时`);
+    }
+    const ktvRoom = await this.ktvRoomRepository.findOne({ where: { id: roomId } });
+    if (isEmpty(ktvRoom)) {
+      throw new BusinessException('包厢不存在');
+    }
+    if (ktvRoom.roomStatus !== KtvRoomStatus.IN_USE) {
+      throw new BusinessException('只有使用中的包厢可以延长');
+    }
+    // 1. 结束时间从当前到期时刻往后加；没有到期时刻时从现在起算。读出来是 Date，不能当字符串裁剪
+    const occupyEndValue: unknown = ktvRoom.occupyEndAt;
+    let occupyEndAt = new Date();
+    if (isEmpty(occupyEndValue) !== true) {
+      if (occupyEndValue instanceof Date) {
+        occupyEndAt = new Date(occupyEndValue.getTime());
+      } else {
+        const occupyEndText = String(occupyEndValue).trim();
+        occupyEndAt = new Date(occupyEndText.replace(' ', 'T'));
+      }
+    }
+    if (Number.isNaN(occupyEndAt.getTime())) {
+      throw new BusinessException('包厢结束时间不正确');
+    }
+    occupyEndAt.setHours(occupyEndAt.getHours() + durationHourCount);
+    ktvRoom.occupyEndAt = this.formatDateTime(occupyEndAt);
+    // 2. 累计延长小时，页面只显示这个总数
+    const currentExtendHours = Number(ktvRoom.occupyExtendHours);
+    const extendHourBase = Number.isInteger(currentExtendHours) ? currentExtendHours : 0;
+    ktvRoom.occupyExtendHours = extendHourBase + durationHourCount;
     await this.ktvRoomRepository.save(ktvRoom);
   }
 
@@ -729,7 +770,10 @@ export class KtvService {
       bookingOrder.roomId = toIdentifier(ktvRoom.id);
       bookingOrder.orderStatus = KtvOrderStatus.VERIFIED;
       ktvRoom.roomStatus = KtvRoomStatus.IN_USE;
-      ktvRoom.occupyEndAt = assignedRange.rangeEnd;
+      const occupyEndAt = new Date();
+      occupyEndAt.setHours(occupyEndAt.getHours() + bookingOrder.durationHours);
+      ktvRoom.occupyEndAt = this.formatDateTime(occupyEndAt);
+      ktvRoom.occupyExtendHours = 0;
       await entityManager.getRepository(KtvRoom).save(ktvRoom);
       await entityManager.getRepository(KtvBookingOrder).save(bookingOrder);
     });

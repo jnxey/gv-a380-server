@@ -42,6 +42,16 @@ export class UpdateKtvRoomStatusDto {
 }
 
 /**
+ * 延长使用中包厢。每次只能延长 1 小时。
+ */
+export class ExtendOccupyDto {
+  @Type(() => Number)
+  @IsInt()
+  @IsIn([KtvOccupyDuration.EXTEND_HOURS])
+  durationHours: number;
+}
+
+/**
  * 后台保存包厢。
  */
 export class SaveKtvRoomDto {
@@ -359,6 +369,16 @@ export class KtvAdminController {
   @RequirePermission(PermissionCode.KTV_ROOM_SAVE)
   async updateRoomStatus(@Param('roomId') roomId: string, @Body() updateKtvRoomStatusDto: UpdateKtvRoomStatusDto) {
     await this.ktvService.updateRoomStatus(roomId, updateKtvRoomStatusDto.roomStatus, updateKtvRoomStatusDto.durationHours);
+    return null;
+  }
+
+  /**
+   * 延长使用中包厢的结束时间。
+   */
+  @Post('rooms/:roomId/extend-occupy')
+  @RequirePermission(PermissionCode.KTV_ORDER_VERIFY)
+  async extendOccupy(@Param('roomId') roomId: string, @Body() extendOccupyDto: ExtendOccupyDto) {
+    await this.ktvService.extendOccupy(roomId, extendOccupyDto.durationHours);
     return null;
   }
 

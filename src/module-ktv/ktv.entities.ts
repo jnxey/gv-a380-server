@@ -85,6 +85,9 @@ export class KtvRoom {
   occupyEndAt: string | null;
 
   @Column({ type: 'int', unsigned: true, default: 0 })
+  occupyExtendHours: number;
+
+  @Column({ type: 'int', unsigned: true, default: 0 })
   sortOrder: number;
 
   @CreateDateColumn({ type: 'datetime' })

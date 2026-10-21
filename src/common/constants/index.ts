@@ -140,10 +140,11 @@ export const KtvBookingHour = {
 } as const;
 
 /**
- * 线下开包厢可选的演唱小时。
+ * 线下开包厢可选的演唱小时，以及使用中每次延长的小时。
  */
 export const KtvOccupyDuration = {
   HOUR_LIST: [2, 3, 4, 5, 6],
+  EXTEND_HOURS: 1,
 } as const;
 
 /**
