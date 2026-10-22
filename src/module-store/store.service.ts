@@ -1,3 +1,6 @@
+import { mkdir, unlink, writeFile } from 'fs/promises';
+import { join } from 'path';
+import { randomUUID } from 'crypto';
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import Decimal from 'decimal.js';
@@ -6,6 +9,8 @@ import {
   BusinessNoPrefix,
   FinanceBizType,
   RecordStatus,
+  ShopImageLimit,
+  ShopImageMime,
   ShopType,
   StorePayMethod,
   StoreSaleItemLimit,
@@ -19,7 +24,7 @@ import { ChatUserClient } from '../core/member/chat-user.client';
 import { MemberBalanceService } from '../core/member/member-balance.service';
 import { MemberQueryService } from '../core/member/member-query.service';
 import { ShopService } from '../core/shop/shop.service';
-import { StoreProduct, StorePurchase, StorePurchaseItem, StoreSale, StoreSaleItem } from './store.entities';
+import { StoreProduct, StoreProductImage, StorePurchase, StorePurchaseItem, StoreSale, StoreSaleItem } from './store.entities';
 
 /**
  * 保存商品的入参。
@@ -69,6 +74,23 @@ export interface CreateAppStoreSaleCommand {
 }
 
 /**
+ * 商品图片展示。
+ */
+export interface StoreProductImageView {
+  imageId: string;
+  imageUrl: string;
+}
+
+/**
+ * 上传商品图片时的文件。
+ */
+export interface StoreProductImageFile {
+  buffer: Buffer;
+  mimetype: string;
+  size: number;
+}
+
+/**
  * 商品展示。
  */
 export interface StoreProductView {
@@ -80,6 +102,7 @@ export interface StoreProductView {
   costPrice: string;
   stockQuantity: number;
   status: string;
+  imageList: StoreProductImageView[];
 }
 
 /**
@@ -129,6 +152,7 @@ export class StoreService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     @InjectRepository(StoreProduct) private readonly storeProductRepository: Repository<StoreProduct>,
+    @InjectRepository(StoreProductImage) private readonly storeProductImageRepository: Repository<StoreProductImage>,
     @InjectRepository(StorePurchase) private readonly storePurchaseRepository: Repository<StorePurchase>,
     @InjectRepository(StorePurchaseItem) private readonly storePurchaseItemRepository: Repository<StorePurchaseItem>,
     @InjectRepository(StoreSale) private readonly storeSaleRepository: Repository<StoreSale>,
@@ -228,7 +252,7 @@ export class StoreService {
     const total = await queryBuilder.getCount();
     const productList = await queryBuilder.skip(pageSetting.skip).take(pageSetting.pageSize).getMany();
     return {
-      list: productList.map((storeProduct) => this.toProductView(storeProduct)),
+      list: await this.toProductViewList(productList),
       total,
       page: pageSetting.page,
       pageSize: pageSetting.pageSize,
@@ -244,7 +268,7 @@ export class StoreService {
       where: { shopId: toIdentifier(enabledShop.id), status: RecordStatus.ENABLED },
       order: { id: 'DESC' },
     });
-    return productList.map((storeProduct) => this.toProductView(storeProduct));
+    return this.toProductViewList(productList);
   }
 
   /**
@@ -271,7 +295,7 @@ export class StoreService {
     storeProduct.stockQuantity = 0;
     storeProduct.status = command.status;
     const savedProduct = await this.storeProductRepository.save(storeProduct);
-    return this.toProductView(savedProduct);
+    return this.toProductView(savedProduct, []);
   }
 
   /**
@@ -298,7 +322,60 @@ export class StoreService {
     storeProduct.salePrice = toMoneyString(command.salePrice);
     storeProduct.status = command.status;
     const savedProduct = await this.storeProductRepository.save(storeProduct);
-    return this.toProductView(savedProduct);
+    const productViewList = await this.toProductViewList([savedProduct]);
+    return productViewList[0];
+  }
+
+  /**
+   * 给当前门店的商品追加一张图片。
+   */
+  async addProductImage(productId: string, file: StoreProductImageFile): Promise<StoreProductImageView> {
+    const storeProduct = await this.requireProduct(productId);
+    if (isEmpty(file) || isEmpty(file.buffer) || file.buffer.length === 0) {
+      throw new BusinessException('请选择图片');
+    }
+    const extension = this.resolveImageExtension(file.mimetype);
+    if (file.size > ShopImageLimit.MAX_BYTES) {
+      throw new BusinessException('图片不能超过5MB');
+    }
+    const productIdValue = toIdentifier(storeProduct.id);
+    const imageCount = await this.storeProductImageRepository.count({ where: { productId: productIdValue } });
+    if (imageCount >= ShopImageLimit.MAX_COUNT) {
+      throw new BusinessException('商品图片最多6张');
+    }
+    const fileName = `${randomUUID()}${extension}`;
+    const directoryPath = join(process.cwd(), 'uploads', 'store-product', productIdValue);
+    await mkdir(directoryPath, { recursive: true });
+    await writeFile(join(directoryPath, fileName), file.buffer);
+    const productImage = new StoreProductImage();
+    productImage.productId = productIdValue;
+    productImage.imageUrl = `/uploads/store-product/${productIdValue}/${fileName}`;
+    productImage.sortOrder = imageCount;
+    const savedImage = await this.storeProductImageRepository.save(productImage);
+    return this.toProductImageView(savedImage);
+  }
+
+  /**
+   * 删除当前门店商品的一张图片，并删掉磁盘文件。
+   */
+  async removeProductImage(productId: string, imageId: string): Promise<void> {
+    const storeProduct = await this.requireProduct(productId);
+    const productIdValue = toIdentifier(storeProduct.id);
+    const productImage = await this.storeProductImageRepository.findOne({ where: { id: imageId, productId: productIdValue } });
+    if (isEmpty(productImage)) {
+      throw new BusinessException('商品图片不存在');
+    }
+    const fileName = productImage.imageUrl.slice(productImage.imageUrl.lastIndexOf('/') + 1);
+    const filePath = join(process.cwd(), 'uploads', 'store-product', productIdValue, fileName);
+    try {
+      await unlink(filePath);
+    } catch (error) {
+      const errorCode = (error as { code?: string }).code;
+      if (errorCode !== 'ENOENT') {
+        throw error;
+      }
+    }
+    await this.storeProductImageRepository.delete({ id: productImage.id });
   }
 
   /**
@@ -602,9 +679,47 @@ export class StoreService {
   }
 
   /**
+   * 确认商品属于当前门店。
+   */
+  private async requireProduct(productId: string): Promise<StoreProduct> {
+    const shopId = await this.requireEnabledStoreShop();
+    const storeProduct = await this.storeProductRepository.findOne({ where: { id: productId, shopId } });
+    if (isEmpty(storeProduct)) {
+      throw new BusinessException('商品不存在');
+    }
+    return storeProduct;
+  }
+
+  /**
+   * 按图片类型得到后缀。不支持的类型直接拒绝。
+   */
+  private resolveImageExtension(mimetype: string): string {
+    if (mimetype === ShopImageMime.JPEG) {
+      return '.jpg';
+    }
+    if (mimetype === ShopImageMime.PNG) {
+      return '.png';
+    }
+    if (mimetype === ShopImageMime.WEBP) {
+      return '.webp';
+    }
+    throw new BusinessException('只支持 jpg、png、webp');
+  }
+
+  /**
+   * 转成前端使用的图片字段。
+   */
+  private toProductImageView(productImage: StoreProductImage): StoreProductImageView {
+    return {
+      imageId: toIdentifier(productImage.id),
+      imageUrl: productImage.imageUrl,
+    };
+  }
+
+  /**
    * 把商品实体转成前端字段。
    */
-  private toProductView(storeProduct: StoreProduct): StoreProductView {
+  private toProductView(storeProduct: StoreProduct, imageList: StoreProductImageView[]): StoreProductView {
     return {
       productId: toIdentifier(storeProduct.id),
       shopId: toIdentifier(storeProduct.shopId),
@@ -614,7 +729,28 @@ export class StoreService {
       costPrice: storeProduct.costPrice,
       stockQuantity: storeProduct.stockQuantity,
       status: storeProduct.status,
+      imageList,
     };
+  }
+
+  /**
+   * 批量转成带图片列表的商品字段。
+   */
+  private async toProductViewList(productList: StoreProduct[]): Promise<StoreProductView[]> {
+    const productIdList = productList.map((storeProduct) => toIdentifier(storeProduct.id));
+    const imageList = productIdList.length === 0
+      ? []
+      : await this.storeProductImageRepository.find({
+          where: { productId: In(productIdList) },
+          order: { sortOrder: 'ASC', id: 'ASC' },
+        });
+    return productList.map((storeProduct) => {
+      const productId = toIdentifier(storeProduct.id);
+      const productImageList = imageList
+        .filter((productImage) => toIdentifier(productImage.productId) === productId)
+        .map((productImage) => this.toProductImageView(productImage));
+      return this.toProductView(storeProduct, productImageList);
+    });
   }
 
   /**

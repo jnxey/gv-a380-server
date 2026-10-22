@@ -1,4 +1,5 @@
-import { Body, Controller, ForbiddenException, Get, Param, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Param, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Type } from 'class-transformer';
 import {
   ArrayNotEmpty,
@@ -11,7 +12,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { FinanceBizType, ModuleCode, PermissionCode, RecordStatus, StorePayMethod } from '../common/constants';
+import { FinanceBizType, ModuleCode, PermissionCode, RecordStatus, ShopImageLimit, StorePayMethod } from '../common/constants';
 import { ShopContext } from '../common/context/shop-context';
 import { CurrentAccount } from '../common/decorators/current-account.decorator';
 import { RequireModule, RequirePermission, RequiresShop } from '../common/decorators/auth.decorators';
@@ -270,6 +271,26 @@ export class StoreAdminController {
       salePrice: saveStoreProductDto.salePrice,
       status: saveStoreProductDto.status,
     });
+  }
+
+  /**
+   * 给当前门店的商品上传一张图片。
+   */
+  @Post('products/:productId/images')
+  @RequirePermission(PermissionCode.STORE_PRODUCT_SAVE)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: ShopImageLimit.MAX_BYTES } }))
+  addProductImage(@Param('productId') productId: string, @UploadedFile() file: Express.Multer.File) {
+    return this.storeService.addProductImage(productId, file);
+  }
+
+  /**
+   * 删除当前门店商品的一张图片。
+   */
+  @Delete('products/:productId/images/:imageId')
+  @RequirePermission(PermissionCode.STORE_PRODUCT_SAVE)
+  async removeProductImage(@Param('productId') productId: string, @Param('imageId') imageId: string) {
+    await this.storeService.removeProductImage(productId, imageId);
+    return null;
   }
 
   /**

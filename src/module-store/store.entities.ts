@@ -35,6 +35,27 @@ export class StoreProduct {
 }
 
 /**
+ * 商铺商品图片。一个商品最多 6 张，张数由服务校验。
+ */
+@Entity('store_product_image')
+export class StoreProductImage {
+  @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
+  id: string;
+
+  @Column({ type: 'bigint', unsigned: true })
+  productId: string;
+
+  @Column({ type: 'varchar', length: 255 })
+  imageUrl: string;
+
+  @Column({ type: 'int', unsigned: true, default: 0 })
+  sortOrder: number;
+
+  @CreateDateColumn({ type: 'datetime' })
+  createdAt: string;
+}
+
+/**
  * 进货单。确认后增加库存。
  */
 @Entity('store_purchase')
