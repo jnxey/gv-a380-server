@@ -433,27 +433,27 @@ export class ShopService {
   }
 
   /**
-   * 写入酒店门店的时区和位置。地址描述同时写回原来的地址文本。营业时间保持空。
+   * 写入酒店门店的时区、营业时间和位置。地址描述同时写回原来的地址文本。
    */
   private fillHotelShopProfile(shop: Shop, command: SaveShopCommand): void {
     if (isEmpty(command.timeZone)) {
       throw new BusinessException('请填写门店时区');
     }
     shop.timeZone = command.timeZone;
-    shop.businessHours = null;
+    shop.businessHours = this.normalizeBusinessHours(command.businessHours);
     shop.shopAddress = this.normalizeShopAddress(command.shopAddress);
     shop.address = shop.shopAddress.addressText;
   }
 
   /**
-   * 写入商铺门店的时区和位置。地址描述同时写回原来的地址文本。营业时间保持空。
+   * 写入商铺门店的时区、营业时间和位置。地址描述同时写回原来的地址文本。
    */
   private fillStoreShopProfile(shop: Shop, command: SaveShopCommand): void {
     if (isEmpty(command.timeZone)) {
       throw new BusinessException('请填写门店时区');
     }
     shop.timeZone = command.timeZone;
-    shop.businessHours = null;
+    shop.businessHours = this.normalizeBusinessHours(command.businessHours);
     shop.shopAddress = this.normalizeShopAddress(command.shopAddress);
     shop.address = shop.shopAddress.addressText;
   }

@@ -9,6 +9,19 @@ import { LoginAccountContext } from '../common/interfaces/login-account-context'
 import { ShopService } from '../core/shop/shop.service';
 
 /**
+ * 营业时间。结束必须晚于开始。
+ */
+export class StoreShopBusinessHoursDto {
+  @IsString()
+  @IsNotEmpty()
+  startTime: string;
+
+  @IsString()
+  @IsNotEmpty()
+  endTime: string;
+}
+
+/**
  * 商铺门店地址。经纬度是数字，描述是文字。
  */
 export class StoreShopAddressDto {
@@ -41,6 +54,11 @@ export class SaveStoreShopDto {
   @IsString()
   @IsNotEmpty()
   timeZone: string;
+
+  @IsDefined()
+  @ValidateNested()
+  @Type(() => StoreShopBusinessHoursDto)
+  businessHours: StoreShopBusinessHoursDto;
 
   @IsDefined()
   @ValidateNested()
@@ -83,6 +101,7 @@ export class StoreShopAdminController {
       contactPhone: saveStoreShopDto.contactPhone || '',
       status: saveStoreShopDto.status,
       timeZone: saveStoreShopDto.timeZone,
+      businessHours: saveStoreShopDto.businessHours ?? null,
       shopAddress: saveStoreShopDto.shopAddress,
       operatorId: loginAccountContext.accountId,
       boundShopIdList: loginAccountContext.boundShopIdList,
@@ -135,6 +154,7 @@ export class StoreShopAdminController {
       contactPhone: saveStoreShopDto.contactPhone || '',
       status: saveStoreShopDto.status,
       timeZone: saveStoreShopDto.timeZone,
+      businessHours: saveStoreShopDto.businessHours ?? null,
       shopAddress: saveStoreShopDto.shopAddress,
       operatorId: loginAccountContext.accountId,
       boundShopIdList: loginAccountContext.boundShopIdList,
