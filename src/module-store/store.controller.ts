@@ -473,6 +473,14 @@ export class StoreAppController {
   constructor(private readonly storeService: StoreService) {}
 
   /**
+   * 查询指定商铺启用中的商品分类。
+   */
+  @Get('product-categories')
+  listProductCategories(@Query('shopId') shopId: string) {
+    return this.storeService.listEnabledProductCategories(shopId);
+  }
+
+  /**
    * 查询指定商铺的可售商品。
    */
   @Get('products')

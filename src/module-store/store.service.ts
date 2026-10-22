@@ -371,6 +371,18 @@ export class StoreService {
   }
 
   /**
+   * 小程序查询指定商铺启用中的商品分类。
+   */
+  async listEnabledProductCategories(shopId: string): Promise<StoreProductCategoryView[]> {
+    const enabledShop = await this.shopService.findEnabledShop(shopId, ShopType.STORE);
+    const categoryList = await this.storeProductCategoryRepository.find({
+      where: { shopId: toIdentifier(enabledShop.id), status: RecordStatus.ENABLED },
+      order: { sortOrder: 'ASC', id: 'ASC' },
+    });
+    return categoryList.map((categoryRow) => this.toProductCategoryView(categoryRow));
+  }
+
+  /**
    * 小程序查询启用中的商品。只返回有库存的可售商品。
    */
   async listEnabledProducts(shopId: string): Promise<StoreProductView[]> {
