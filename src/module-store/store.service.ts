@@ -19,7 +19,7 @@ import { ShopContext } from '../common/context/shop-context';
 import { MiniappSignService } from '../common/crypto/miniapp-sign.service';
 import { BusinessException } from '../common/exceptions/business.exception';
 import { PageResult } from '../common/interfaces/page-result';
-import { createBusinessNo, isEmpty, isOneOf, isPositiveMoney, resolvePage, toIdentifier, toMoneyString } from '../common/tools';
+import { createBusinessNo, isEmpty, isNumber, isOneOf, isPositiveMoney, resolvePage, toIdentifier, toMoneyString } from '../common/tools';
 import { ChatUserClient } from '../core/member/chat-user.client';
 import { MemberBalanceService } from '../core/member/member-balance.service';
 import { MemberQueryService } from '../core/member/member-query.service';
@@ -42,6 +42,7 @@ export interface SaveStoreProductCommand {
   productName: string;
   barcode: string;
   salePrice: string | number;
+  costPrice: string | number;
   status: string;
 }
 
@@ -382,7 +383,7 @@ export class StoreService {
   }
 
   /**
-   * 新建商品。库存从 0 开始，进价先记 0。排序排到当前门店最后。
+   * 新建商品。库存从 0 开始。排序排到当前门店最后。
    */
   async createProduct(command: SaveStoreProductCommand): Promise<StoreProductView> {
     const shopId = await this.requireEnabledStoreShop();
@@ -399,6 +400,7 @@ export class StoreService {
     if (isPositiveMoney(command.salePrice) !== true) {
       throw new BusinessException('售价必须大于0');
     }
+    const costPriceText = this.resolveCostPrice(command.costPrice);
     if (isOneOf(command.status, Object.values(RecordStatus)) !== true) {
       throw new BusinessException('商品状态不正确');
     }
@@ -408,7 +410,7 @@ export class StoreService {
     storeProduct.productName = productName;
     storeProduct.barcode = barcode;
     storeProduct.salePrice = toMoneyString(command.salePrice);
-    storeProduct.costPrice = toMoneyString(0);
+    storeProduct.costPrice = costPriceText;
     storeProduct.stockQuantity = 0;
     storeProduct.sortOrder = await this.nextProductSortOrder(shopId);
     storeProduct.status = command.status;
@@ -449,7 +451,7 @@ export class StoreService {
   }
 
   /**
-   * 修改商品资料。不改库存和进价。
+   * 修改商品资料。不改库存。
    */
   async updateProduct(productId: string, command: SaveStoreProductCommand): Promise<StoreProductView> {
     const shopId = await this.requireEnabledStoreShop();
@@ -470,6 +472,7 @@ export class StoreService {
     if (isPositiveMoney(command.salePrice) !== true) {
       throw new BusinessException('售价必须大于0');
     }
+    const costPriceText = this.resolveCostPrice(command.costPrice);
     if (isOneOf(command.status, Object.values(RecordStatus)) !== true) {
       throw new BusinessException('商品状态不正确');
     }
@@ -477,6 +480,7 @@ export class StoreService {
     storeProduct.productName = productName;
     storeProduct.barcode = barcode;
     storeProduct.salePrice = toMoneyString(command.salePrice);
+    storeProduct.costPrice = costPriceText;
     storeProduct.status = command.status;
     const savedProduct = await this.storeProductRepository.save(storeProduct);
     const productViewList = await this.toProductViewList([savedProduct]);
@@ -894,6 +898,20 @@ export class StoreService {
       return 0;
     }
     return Number(maxRow.maxSortOrder) + 1;
+  }
+
+  /**
+   * 校验进价：必须是数字且不能为负，再格式成金额字符串。
+   */
+  private resolveCostPrice(costPrice: string | number): string {
+    if (isNumber(costPrice) !== true) {
+      throw new BusinessException('进价不正确');
+    }
+    const costPriceText = toMoneyString(costPrice);
+    if (new Decimal(costPriceText).lt(0)) {
+      throw new BusinessException('进价不能为负');
+    }
+    return costPriceText;
   }
 
   /**

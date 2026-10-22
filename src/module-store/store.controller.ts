@@ -63,6 +63,9 @@ export class SaveStoreProductDto {
   @IsNotEmpty()
   salePrice: string | number;
 
+  @IsNotEmpty()
+  costPrice: string | number;
+
   @IsIn(Object.values(RecordStatus))
   status: string;
 }
@@ -338,6 +341,7 @@ export class StoreAdminController {
       productName: saveStoreProductDto.productName,
       barcode: saveStoreProductDto.barcode,
       salePrice: saveStoreProductDto.salePrice,
+      costPrice: saveStoreProductDto.costPrice,
       status: saveStoreProductDto.status,
     });
   }
@@ -363,6 +367,7 @@ export class StoreAdminController {
       productName: saveStoreProductDto.productName,
       barcode: saveStoreProductDto.barcode,
       salePrice: saveStoreProductDto.salePrice,
+      costPrice: saveStoreProductDto.costPrice,
       status: saveStoreProductDto.status,
     });
   }
