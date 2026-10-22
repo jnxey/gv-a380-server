@@ -290,7 +290,7 @@ export class MemberCommonController {
   }
 
   /**
-   * 按付款码查询这张码发出之后有没有充值或店内消费。没有时仍返回成功，供 App 继续轮询。
+   * 按付款码查询这张码发出之后有没有充值、店内消费或商铺会员付款。没有时仍返回成功，供 App 继续轮询。
    */
   @Public()
   @UseGuards(MerchantAuthGuard)
@@ -300,12 +300,12 @@ export class MemberCommonController {
     if (isEmpty(payRechargeIssue)) {
       return this.buildMerchantStatus(false, false, 0);
     }
-    // 1. 还没有余额账户时，不可能已经产生充值或店内消费
+    // 1. 还没有余额账户时，不可能已经产生充值、店内消费或商铺会员付款
     const memberAccount = await this.memberQueryService.findByUsername(payRechargeIssue.username);
     if (isEmpty(memberAccount)) {
       return this.buildMerchantStatus(false, false, 0);
     }
-    // 2. 只认这张码发出之后的最新一笔充值或店内消费
+    // 2. 只认这张码发出之后的最新一笔充值、店内消费或商铺会员付款
     const financeBill = await this.financeBillService.findLatestPayRechargeBill(
       toIdentifier(memberAccount.id),
       this.formatIssuedAt(payRechargeIssue.issuedAtMilliseconds),

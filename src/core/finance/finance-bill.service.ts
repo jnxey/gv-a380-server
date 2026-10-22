@@ -306,7 +306,7 @@ export class FinanceBillService {
   }
 
   /**
-   * 取付款码发出之后，该会员最新的一笔充值或店内消费。没有则返回空。
+   * 取付款码发出之后，该会员最新的一笔充值、店内消费或商铺会员付款。没有则返回空。
    */
   async findLatestPayRechargeBill(memberId: string, sinceAt: string): Promise<FinanceBill | null> {
     if (isEmpty(memberId) || isEmpty(sinceAt)) {
@@ -315,7 +315,12 @@ export class FinanceBillService {
     return this.financeBillRepository.findOne({
       where: {
         memberId,
-        bizType: In([FinanceBizType.RECHARGE, FinanceBizType.KTV_IN_STORE]),
+        bizType: In([
+          FinanceBizType.RECHARGE,
+          FinanceBizType.KTV_IN_STORE,
+          FinanceBizType.HOTEL_IN_STORE,
+          FinanceBizType.STORE_SALE,
+        ]),
         createdAt: MoreThanOrEqual(sinceAt),
       },
       order: { createdAt: 'DESC', id: 'DESC' },
