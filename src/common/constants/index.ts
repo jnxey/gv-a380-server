@@ -23,6 +23,8 @@ export const RoleCode = {
   KTV_FRONT_DESK: 'KTV_FRONT_DESK',
   HOTEL_SHOP_ADMIN: 'HOTEL_SHOP_ADMIN',
   HOTEL_FRONT_DESK: 'HOTEL_FRONT_DESK',
+  STORE_SHOP_ADMIN: 'STORE_SHOP_ADMIN',
+  STORE_CASHIER: 'STORE_CASHIER',
 } as const;
 
 /**
@@ -32,6 +34,7 @@ export const RoleScope = {
   GROUP: 'GROUP',
   KTV: 'KTV',
   HOTEL: 'HOTEL',
+  STORE: 'STORE',
 } as const;
 
 /**
@@ -41,6 +44,7 @@ export const ModuleCode = {
   CORE: 'CORE',
   KTV: 'KTV',
   HOTEL: 'HOTEL',
+  STORE: 'STORE',
 } as const;
 
 /**
@@ -49,6 +53,7 @@ export const ModuleCode = {
 export const ShopType = {
   KTV: 'KTV',
   HOTEL: 'HOTEL',
+  STORE: 'STORE',
 } as const;
 
 /**
@@ -87,6 +92,22 @@ export const FinanceBizType = {
   HOTEL_IN_STORE: 'HOTEL_IN_STORE',
   REFUND: 'REFUND',
   SHOP_SCAN_PAY: 'SHOP_SCAN_PAY',
+  STORE_SALE: 'STORE_SALE',
+} as const;
+
+/**
+ * 商铺收款方式。会员余额会扣款，现金只记销售单。
+ */
+export const StorePayMethod = {
+  MEMBER: 'MEMBER',
+  CASH: 'CASH',
+} as const;
+
+/**
+ * 商铺一次单据最多的商品行数。
+ */
+export const StoreSaleItemLimit = {
+  MAX_COUNT: 50,
 } as const;
 
 /**
@@ -297,6 +318,16 @@ export const PermissionCode = {
   HOTEL_ORDER_CANCEL: 'hotel:order:cancel',
   HOTEL_BILL_QUERY: 'hotel:bill:query',
   HOTEL_DEDUCT: 'hotel:deduct',
+  STORE_SHOP_QUERY: 'store:shop:query',
+  STORE_SHOP_SAVE: 'store:shop:save',
+  STORE_PRODUCT_QUERY: 'store:product:query',
+  STORE_PRODUCT_SAVE: 'store:product:save',
+  STORE_PURCHASE_QUERY: 'store:purchase:query',
+  STORE_PURCHASE_SAVE: 'store:purchase:save',
+  STORE_SALE_QUERY: 'store:sale:query',
+  STORE_SALE_CASH: 'store:sale:cash',
+  STORE_SALE_MEMBER: 'store:sale:member',
+  STORE_BILL_QUERY: 'store:bill:query',
   SYSTEM_USER_QUERY: 'system:user:query',
   SYSTEM_USER_SAVE: 'system:user:save',
   SYSTEM_ROLE_QUERY: 'system:role:query',
@@ -513,6 +544,8 @@ export const BusinessNoPrefix = {
   KTV_BOOKING: 'KTVB',
   KTV_CONSUME: 'KTVC',
   HOTEL_BOOKING: 'HTLB',
+  STORE_PURCHASE: 'STRP',
+  STORE_SALE: 'STRS',
 } as const;
 
 /**

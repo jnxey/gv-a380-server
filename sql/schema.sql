@@ -1,5 +1,5 @@
 -- 集团内部综合消费系统 gv_a380
--- MySQL 8，模块化单体：core / ktv / hotel
+-- MySQL 8，模块化单体：core / ktv / hotel / store
 -- 金额字段统一 DECIMAL(12,2)
 
 CREATE DATABASE IF NOT EXISTS gv_a380 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -12,7 +12,7 @@ CREATE TABLE shop (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
   shop_code VARCHAR(32) NOT NULL COMMENT '门店编码',
   shop_name VARCHAR(64) NOT NULL COMMENT '门店名称',
-  shop_type VARCHAR(16) NOT NULL COMMENT '门店类型：KTV、HOTEL',
+  shop_type VARCHAR(16) NOT NULL COMMENT '门店类型：KTV、HOTEL、STORE',
   address VARCHAR(255) NOT NULL DEFAULT '' COMMENT '地址',
   time_zone VARCHAR(64) NOT NULL DEFAULT '' COMMENT '门店时区，IANA 时区名',
   business_hours JSON NULL COMMENT '营业时间，开始到结束',
@@ -57,7 +57,7 @@ CREATE TABLE sys_role (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
   role_code VARCHAR(64) NOT NULL COMMENT '角色编码',
   role_name VARCHAR(64) NOT NULL COMMENT '角色名称',
-  role_scope VARCHAR(16) NOT NULL COMMENT '角色范围：GROUP、KTV、HOTEL',
+  role_scope VARCHAR(16) NOT NULL COMMENT '角色范围：GROUP、KTV、HOTEL、STORE',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (id),
@@ -80,7 +80,7 @@ CREATE TABLE sys_permission (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
   permission_code VARCHAR(64) NOT NULL COMMENT '权限编码',
   permission_name VARCHAR(64) NOT NULL COMMENT '权限名称',
-  module_code VARCHAR(16) NOT NULL COMMENT '所属模块：CORE、KTV、HOTEL',
+  module_code VARCHAR(16) NOT NULL COMMENT '所属模块：CORE、KTV、HOTEL、STORE',
   menu_id BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '所属页面菜单ID，0表示未挂页面',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (id),
@@ -107,7 +107,7 @@ CREATE TABLE sys_menu (
   menu_path VARCHAR(128) NOT NULL DEFAULT '' COMMENT '前端路由路径',
   component_path VARCHAR(128) NOT NULL DEFAULT '' COMMENT '前端组件标识',
   permission_code VARCHAR(64) NOT NULL DEFAULT '' COMMENT '关联权限编码，目录可空',
-  module_code VARCHAR(16) NOT NULL COMMENT '所属模块：CORE、KTV、HOTEL',
+  module_code VARCHAR(16) NOT NULL COMMENT '所属模块：CORE、KTV、HOTEL、STORE',
   sort_order INT NOT NULL DEFAULT 0 COMMENT '排序',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (id),
@@ -178,7 +178,7 @@ CREATE TABLE finance_bill (
   bill_no VARCHAR(64) NOT NULL COMMENT '账单号',
   member_id BIGINT UNSIGNED NOT NULL COMMENT '会员ID',
   shop_id BIGINT UNSIGNED NOT NULL COMMENT '业务发生门店ID',
-  biz_type VARCHAR(32) NOT NULL COMMENT '业务类型：RECHARGE、KTV_BOOKING、KTV_IN_STORE、HOTEL_ROOM_FEE、HOTEL_IN_STORE、REFUND、SHOP_SCAN_PAY',
+  biz_type VARCHAR(32) NOT NULL COMMENT '业务类型：RECHARGE、KTV_BOOKING、KTV_IN_STORE、HOTEL_ROOM_FEE、HOTEL_IN_STORE、REFUND、SHOP_SCAN_PAY、STORE_SALE',
   biz_order_no VARCHAR(64) NOT NULL DEFAULT '' COMMENT '业务单号',
   direction VARCHAR(16) NOT NULL COMMENT '方向：IN、OUT',
   amount DECIMAL(12,2) NOT NULL COMMENT '金额',
@@ -409,3 +409,82 @@ CREATE TABLE hotel_stay_record (
   CONSTRAINT fk_hotel_stay_room FOREIGN KEY (room_id) REFERENCES hotel_room (id),
   CONSTRAINT fk_hotel_stay_member FOREIGN KEY (member_id) REFERENCES member_account (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='酒店入住记录';
+
+-- ----------------------------
+-- store：商铺商品与进销存
+-- ----------------------------
+CREATE TABLE store_product (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  shop_id BIGINT UNSIGNED NOT NULL COMMENT '门店ID',
+  product_name VARCHAR(64) NOT NULL COMMENT '商品名称',
+  barcode VARCHAR(32) NOT NULL DEFAULT '' COMMENT '条码',
+  sale_price DECIMAL(12,2) NOT NULL COMMENT '售价',
+  cost_price DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT '进价',
+  stock_quantity INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '库存数量',
+  status VARCHAR(16) NOT NULL COMMENT '状态：ENABLED、DISABLED',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (id),
+  KEY idx_store_product_shop (shop_id, status),
+  KEY idx_store_product_barcode (shop_id, barcode),
+  CONSTRAINT fk_store_product_shop FOREIGN KEY (shop_id) REFERENCES shop (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='商铺商品';
+
+CREATE TABLE store_purchase (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  shop_id BIGINT UNSIGNED NOT NULL COMMENT '门店ID',
+  purchase_no VARCHAR(32) NOT NULL COMMENT '进货单号',
+  amount DECIMAL(12,2) NOT NULL COMMENT '进货金额',
+  operator_id BIGINT UNSIGNED NULL COMMENT '操作人后台账号ID',
+  remark VARCHAR(128) NOT NULL DEFAULT '' COMMENT '备注',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_store_purchase_no (purchase_no),
+  KEY idx_store_purchase_shop (shop_id),
+  CONSTRAINT fk_store_purchase_shop FOREIGN KEY (shop_id) REFERENCES shop (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='商铺进货单';
+
+CREATE TABLE store_purchase_item (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  purchase_id BIGINT UNSIGNED NOT NULL COMMENT '进货单ID',
+  product_id BIGINT UNSIGNED NOT NULL COMMENT '商品ID',
+  product_name VARCHAR(64) NOT NULL COMMENT '商品名称快照',
+  cost_price DECIMAL(12,2) NOT NULL COMMENT '进价快照',
+  quantity INT UNSIGNED NOT NULL COMMENT '数量',
+  line_amount DECIMAL(12,2) NOT NULL COMMENT '行金额',
+  PRIMARY KEY (id),
+  KEY idx_store_purchase_item_purchase (purchase_id),
+  CONSTRAINT fk_store_purchase_item_purchase FOREIGN KEY (purchase_id) REFERENCES store_purchase (id),
+  CONSTRAINT fk_store_purchase_item_product FOREIGN KEY (product_id) REFERENCES store_product (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='商铺进货明细';
+
+CREATE TABLE store_sale (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  shop_id BIGINT UNSIGNED NOT NULL COMMENT '门店ID',
+  sale_no VARCHAR(32) NOT NULL COMMENT '销售单号',
+  member_id BIGINT UNSIGNED NULL COMMENT '会员ID，现金可空',
+  pay_method VARCHAR(16) NOT NULL COMMENT '收款方式：MEMBER、CASH',
+  amount DECIMAL(12,2) NOT NULL COMMENT '销售金额',
+  operator_id BIGINT UNSIGNED NULL COMMENT '操作人后台账号ID',
+  remark VARCHAR(128) NOT NULL DEFAULT '' COMMENT '备注',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_store_sale_no (sale_no),
+  KEY idx_store_sale_shop (shop_id),
+  KEY idx_store_sale_member (member_id),
+  CONSTRAINT fk_store_sale_shop FOREIGN KEY (shop_id) REFERENCES shop (id),
+  CONSTRAINT fk_store_sale_member FOREIGN KEY (member_id) REFERENCES member_account (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='商铺销售单';
+
+CREATE TABLE store_sale_item (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  sale_id BIGINT UNSIGNED NOT NULL COMMENT '销售单ID',
+  product_id BIGINT UNSIGNED NOT NULL COMMENT '商品ID',
+  product_name VARCHAR(64) NOT NULL COMMENT '商品名称快照',
+  sale_price DECIMAL(12,2) NOT NULL COMMENT '售价快照',
+  quantity INT UNSIGNED NOT NULL COMMENT '数量',
+  line_amount DECIMAL(12,2) NOT NULL COMMENT '行金额',
+  PRIMARY KEY (id),
+  KEY idx_store_sale_item_sale (sale_id),
+  CONSTRAINT fk_store_sale_item_sale FOREIGN KEY (sale_id) REFERENCES store_sale (id),
+  CONSTRAINT fk_store_sale_item_product FOREIGN KEY (product_id) REFERENCES store_product (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='商铺销售明细';

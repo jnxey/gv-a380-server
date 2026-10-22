@@ -3,7 +3,7 @@ import { ModuleCode, RoleCode, RoleScope, ShopType } from '../constants';
 
 /**
  * 判断角色能否进入某个业务模块。
- * 集团角色可进 KTV 和酒店，门店角色不能跨业务线。
+ * 集团角色可进 KTV、酒店和商铺，门店角色不能跨业务线。
  */
 export function canAccessModule(roleList: RoleBinding[], moduleCode: string): boolean {
   if (moduleCode === ModuleCode.CORE) {
@@ -21,6 +21,9 @@ export function canAccessModule(roleList: RoleBinding[], moduleCode: string): bo
   if (moduleCode === ModuleCode.HOTEL) {
     return roleList.some((roleBinding) => roleBinding.roleScope === RoleScope.HOTEL);
   }
+  if (moduleCode === ModuleCode.STORE) {
+    return roleList.some((roleBinding) => roleBinding.roleScope === RoleScope.STORE);
+  }
   return false;
 }
 
@@ -33,6 +36,9 @@ export function isShopTypeMatched(shopType: string, moduleCode: string): boolean
   }
   if (moduleCode === ModuleCode.HOTEL) {
     return shopType === ShopType.HOTEL;
+  }
+  if (moduleCode === ModuleCode.STORE) {
+    return shopType === ShopType.STORE;
   }
   return true;
 }

@@ -263,6 +263,60 @@ export class ShopService {
   }
 
   /**
+   * 新建商铺门店，并把创建人绑定到该门店。
+   */
+  async createStoreShop(command: SaveShopCommand): Promise<Shop> {
+    const shop = new Shop();
+    shop.shopCode = command.shopCode;
+    shop.shopName = command.shopName;
+    shop.shopType = ShopType.STORE;
+    this.fillStoreShopProfile(shop, command);
+    shop.contactPhone = isEmpty(command.contactPhone) ? '' : command.contactPhone;
+    shop.status = command.status;
+    try {
+      return await this.shopRepository.manager.transaction(async (entityManager) => {
+        const savedShop = await entityManager.getRepository(Shop).save(shop);
+        const sysUserShop = new SysUserShop();
+        sysUserShop.userId = command.operatorId;
+        sysUserShop.shopId = toIdentifier(savedShop.id);
+        await entityManager.getRepository(SysUserShop).save(sysUserShop);
+        return savedShop;
+      });
+    } catch (error) {
+      if (isDuplicateEntryError(error)) {
+        throw new BusinessException('门店编码已存在');
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * 修改已绑定的商铺门店。不能改门店类型，也不能改未绑定的门店。
+   */
+  async updateStoreShop(shopId: string, command: SaveShopCommand): Promise<Shop> {
+    if (!command.boundShopIdList.includes(toIdentifier(shopId))) {
+      throw new BusinessException('无权修改该门店');
+    }
+    const shop = await this.shopRepository.findOne({ where: { id: shopId, shopType: ShopType.STORE } });
+    if (isEmpty(shop)) {
+      throw new BusinessException('商铺门店不存在');
+    }
+    shop.shopCode = command.shopCode;
+    shop.shopName = command.shopName;
+    this.fillStoreShopProfile(shop, command);
+    shop.contactPhone = isEmpty(command.contactPhone) ? '' : command.contactPhone;
+    shop.status = command.status;
+    try {
+      return await this.shopRepository.save(shop);
+    } catch (error) {
+      if (isDuplicateEntryError(error)) {
+        throw new BusinessException('门店编码已存在');
+      }
+      throw error;
+    }
+  }
+
+  /**
    * 给一家已绑定门店追加图片。超过张数、类型或大小时拒绝。
    */
   async addShopImage(shopId: string, shopType: string, boundShopIdList: string[], file: ShopImageFile): Promise<ShopImageView> {
@@ -382,6 +436,19 @@ export class ShopService {
    * 写入酒店门店的时区和位置。地址描述同时写回原来的地址文本。营业时间保持空。
    */
   private fillHotelShopProfile(shop: Shop, command: SaveShopCommand): void {
+    if (isEmpty(command.timeZone)) {
+      throw new BusinessException('请填写门店时区');
+    }
+    shop.timeZone = command.timeZone;
+    shop.businessHours = null;
+    shop.shopAddress = this.normalizeShopAddress(command.shopAddress);
+    shop.address = shop.shopAddress.addressText;
+  }
+
+  /**
+   * 写入商铺门店的时区和位置。地址描述同时写回原来的地址文本。营业时间保持空。
+   */
+  private fillStoreShopProfile(shop: Shop, command: SaveShopCommand): void {
     if (isEmpty(command.timeZone)) {
       throw new BusinessException('请填写门店时区');
     }
