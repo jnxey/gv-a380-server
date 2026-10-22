@@ -1,10 +1,9 @@
-import { join } from 'path';
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
-import { ServerSetting } from './common/constants';
+import { ServerSetting, UploadSetting } from './common/constants';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { isNumber } from './common/tools';
 
@@ -13,7 +12,7 @@ import { isNumber } from './common/tools';
  */
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
-  app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads' });
+  app.useStaticAssets(UploadSetting.DISK_ROOT, { prefix: UploadSetting.URL_PREFIX });
   app.enableCors({
     origin: true,
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Shop-Id', 'X-App-Id', 'X-Timestamp', 'X-Nonce', 'X-Sign'],

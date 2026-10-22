@@ -14,6 +14,7 @@ import {
   ShopType,
   StorePayMethod,
   StoreSaleItemLimit,
+  UploadSetting,
 } from '../common/constants';
 import { ShopContext } from '../common/context/shop-context';
 import { MiniappSignService } from '../common/crypto/miniapp-sign.service';
@@ -517,12 +518,12 @@ export class StoreService {
       throw new BusinessException('商品图片最多6张');
     }
     const fileName = `${randomUUID()}${extension}`;
-    const directoryPath = join(process.cwd(), 'uploads', 'store-product', productIdValue);
+    const directoryPath = join(UploadSetting.DISK_ROOT, 'store-product', productIdValue);
     await mkdir(directoryPath, { recursive: true });
     await writeFile(join(directoryPath, fileName), file.buffer);
     const productImage = new StoreProductImage();
     productImage.productId = productIdValue;
-    productImage.imageUrl = `/uploads/store-product/${productIdValue}/${fileName}`;
+    productImage.imageUrl = `${UploadSetting.URL_PREFIX}/store-product/${productIdValue}/${fileName}`;
     productImage.sortOrder = imageCount;
     const savedImage = await this.storeProductImageRepository.save(productImage);
     return this.toProductImageView(savedImage);
@@ -539,7 +540,7 @@ export class StoreService {
       throw new BusinessException('商品图片不存在');
     }
     const fileName = productImage.imageUrl.slice(productImage.imageUrl.lastIndexOf('/') + 1);
-    const filePath = join(process.cwd(), 'uploads', 'store-product', productIdValue, fileName);
+    const filePath = join(UploadSetting.DISK_ROOT, 'store-product', productIdValue, fileName);
     try {
       await unlink(filePath);
     } catch (error) {

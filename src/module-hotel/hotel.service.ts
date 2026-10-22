@@ -20,6 +20,7 @@ import {
   ShopImageLimit,
   ShopImageMime,
   ShopType,
+  UploadSetting,
   NumberBoundary,
 } from '../common/constants';
 import { ShopContext } from '../common/context/shop-context';
@@ -231,12 +232,12 @@ export class HotelService {
       throw new BusinessException('房型图片最多6张');
     }
     const fileName = `${randomUUID()}${extension}`;
-    const directoryPath = join(process.cwd(), 'uploads', 'hotel-room-type', roomTypeIdValue);
+    const directoryPath = join(UploadSetting.DISK_ROOT, 'hotel-room-type', roomTypeIdValue);
     await mkdir(directoryPath, { recursive: true });
     await writeFile(join(directoryPath, fileName), file.buffer);
     const roomTypeImage = new HotelRoomTypeImage();
     roomTypeImage.roomTypeId = roomTypeIdValue;
-    roomTypeImage.imageUrl = `/uploads/hotel-room-type/${roomTypeIdValue}/${fileName}`;
+    roomTypeImage.imageUrl = `${UploadSetting.URL_PREFIX}/hotel-room-type/${roomTypeIdValue}/${fileName}`;
     roomTypeImage.sortOrder = imageCount;
     const savedImage = await this.hotelRoomTypeImageRepository.save(roomTypeImage);
     return this.toImageView(savedImage);
@@ -253,7 +254,7 @@ export class HotelService {
       throw new BusinessException('房型图片不存在');
     }
     const fileName = roomTypeImage.imageUrl.slice(roomTypeImage.imageUrl.lastIndexOf('/') + 1);
-    const filePath = join(process.cwd(), 'uploads', 'hotel-room-type', roomTypeIdValue, fileName);
+    const filePath = join(UploadSetting.DISK_ROOT, 'hotel-room-type', roomTypeIdValue, fileName);
     try {
       await unlink(filePath);
     } catch (error) {

@@ -24,6 +24,7 @@ import {
   ShopImageLimit,
   ShopImageMime,
   ShopType,
+  UploadSetting,
   VerifyCodeRule,
   NumberBoundary,
 } from '../common/constants';
@@ -217,12 +218,12 @@ export class KtvService {
       throw new BusinessException('包厢类型图片最多6张');
     }
     const fileName = `${randomUUID()}${extension}`;
-    const directoryPath = join(process.cwd(), 'uploads', 'ktv-room-type', roomTypeIdValue);
+    const directoryPath = join(UploadSetting.DISK_ROOT, 'ktv-room-type', roomTypeIdValue);
     await mkdir(directoryPath, { recursive: true });
     await writeFile(join(directoryPath, fileName), file.buffer);
     const roomTypeImage = new KtvRoomTypeImage();
     roomTypeImage.roomTypeId = roomTypeIdValue;
-    roomTypeImage.imageUrl = `/uploads/ktv-room-type/${roomTypeIdValue}/${fileName}`;
+    roomTypeImage.imageUrl = `${UploadSetting.URL_PREFIX}/ktv-room-type/${roomTypeIdValue}/${fileName}`;
     roomTypeImage.sortOrder = imageCount;
     const savedImage = await this.ktvRoomTypeImageRepository.save(roomTypeImage);
     return this.toImageView(savedImage);
@@ -239,7 +240,7 @@ export class KtvService {
       throw new BusinessException('包厢类型图片不存在');
     }
     const fileName = roomTypeImage.imageUrl.slice(roomTypeImage.imageUrl.lastIndexOf('/') + 1);
-    const filePath = join(process.cwd(), 'uploads', 'ktv-room-type', roomTypeIdValue, fileName);
+    const filePath = join(UploadSetting.DISK_ROOT, 'ktv-room-type', roomTypeIdValue, fileName);
     try {
       await unlink(filePath);
     } catch (error) {

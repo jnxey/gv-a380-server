@@ -1,9 +1,19 @@
+import { join } from 'path';
+
 /**
  * 账号类型。会员与后台账号严禁混用。
  */
 export const AccountType = {
   MEMBER: 'MEMBER',
   SYS_USER: 'SYS_USER',
+} as const;
+
+/**
+ * 图片上传目录。落盘在工作目录上一级的 uploads/a380，对外 URL 前缀 /uploads/a380。
+ */
+export const UploadSetting = {
+  DISK_ROOT: join(process.cwd(), '..', 'uploads', 'a380'),
+  URL_PREFIX: '/uploads/a380',
 } as const;
 
 /**

@@ -4,7 +4,7 @@ import { join } from 'path';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, In, Repository } from 'typeorm';
-import { RecordStatus, ShopImageLimit, ShopImageMime, ShopType } from '../../common/constants';
+import { RecordStatus, ShopImageLimit, ShopImageMime, ShopType, UploadSetting } from '../../common/constants';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { isDuplicateEntryError, isEmpty, toIdentifier } from '../../common/tools';
 import { SysUserShop } from '../rbac/sys.entities';
@@ -333,12 +333,12 @@ export class ShopService {
       throw new BusinessException('门店图片最多6张');
     }
     const fileName = `${randomUUID()}${extension}`;
-    const directoryPath = join(process.cwd(), 'uploads', 'shop', toIdentifier(shopId));
+    const directoryPath = join(UploadSetting.DISK_ROOT, 'shop', toIdentifier(shopId));
     await mkdir(directoryPath, { recursive: true });
     await writeFile(join(directoryPath, fileName), file.buffer);
     const shopImage = new ShopImage();
     shopImage.shopId = toIdentifier(shopId);
-    shopImage.imageUrl = `/uploads/shop/${toIdentifier(shopId)}/${fileName}`;
+    shopImage.imageUrl = `${UploadSetting.URL_PREFIX}/shop/${toIdentifier(shopId)}/${fileName}`;
     shopImage.sortOrder = imageCount;
     const savedImage = await this.shopImageRepository.save(shopImage);
     return this.toImageView(savedImage);
@@ -354,7 +354,7 @@ export class ShopService {
       throw new BusinessException('门店图片不存在');
     }
     const fileName = shopImage.imageUrl.slice(shopImage.imageUrl.lastIndexOf('/') + 1);
-    const filePath = join(process.cwd(), 'uploads', 'shop', toIdentifier(shopId), fileName);
+    const filePath = join(UploadSetting.DISK_ROOT, 'shop', toIdentifier(shopId), fileName);
     try {
       await unlink(filePath);
     } catch (error) {
