@@ -31,9 +31,9 @@ export const PointMerchantResponse = {
  * 积分流水业务类型文案，供小程序明细展示。
  */
 export const PointBizTypeLabel: Record<string, string> = {
-  '98': '投注赢',
-  '99': '投注输',
-  '100': '投注变更',
+  '98': '手工单', // 投注赢
+  '99': '手工单', // 投注输
+  '100': '手工单修改', // 投注变更
   '601': '积分消费',
   '602': '消费退回',
   '603': '酒店预订',
