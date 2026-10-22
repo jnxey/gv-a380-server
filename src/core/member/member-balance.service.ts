@@ -68,7 +68,7 @@ export interface RefundBalanceCommand {
 }
 
 /**
- * 会员余额、积分的唯一写入口。
+ * 会员余额的唯一写入口。
  * KTV 与酒店模块只能调用这里，不能自己更新 member_account。
  */
 @Injectable()
@@ -76,7 +76,7 @@ export class MemberBalanceService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
   /**
-   * 后台充值。自己开启本地事务，增加余额并写入 RECHARGE 流水，不产生积分。
+   * 后台充值。自己开启本地事务，增加余额并写入 RECHARGE 流水。
    */
   async recharge(command: RechargeCommand): Promise<FinanceBill> {
     if (!isPositiveMoney(command.amount)) {
@@ -143,7 +143,7 @@ export class MemberBalanceService {
   }
 
   /**
-   * 在已有事务里锁会员行、改余额、写财务流水，消费时同步记积分。
+   * 在已有事务里锁会员行、改余额、写财务流水。
    */
   private async applyBalanceChange(command: BalanceChangeCommand): Promise<FinanceBill> {
     // 1. 按会员主键加行锁，避免并发扣减把余额扣成负数

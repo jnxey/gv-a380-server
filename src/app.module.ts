@@ -22,6 +22,7 @@ import { MapModule } from './core/map/map.module';
 import { HotelModule } from './module-hotel/hotel.module';
 import { KtvModule } from './module-ktv/ktv.module';
 import { StoreModule } from './module-store/store.module';
+import { PointModule } from './module-point/point.module';
 
 /**
  * 模块化单体入口。core、KTV、酒店、商铺跑在同一个进程里。
@@ -69,6 +70,7 @@ import { StoreModule } from './module-store/store.module';
     KtvModule,
     HotelModule,
     StoreModule,
+    PointModule,
     MapModule,
   ],
   providers: [

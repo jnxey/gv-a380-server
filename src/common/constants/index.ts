@@ -612,7 +612,6 @@ export const ShopScopedTableName = {
   HOTEL_BOOKING_ORDER: 'hotel_booking_order',
   HOTEL_STAY_RECORD: 'hotel_stay_record',
   FINANCE_BILL: 'finance_bill',
-  MEMBER_POINT_LOG: 'member_point_log',
   NOTIFY_MESSAGE: 'notify_message',
 } as const;
 
@@ -626,7 +625,6 @@ export const ShopScopedTableNameList: string[] = [
   ShopScopedTableName.HOTEL_BOOKING_ORDER,
   ShopScopedTableName.HOTEL_STAY_RECORD,
   ShopScopedTableName.FINANCE_BILL,
-  ShopScopedTableName.MEMBER_POINT_LOG,
   ShopScopedTableName.NOTIFY_MESSAGE,
 ];
 
