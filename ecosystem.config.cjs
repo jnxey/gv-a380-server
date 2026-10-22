@@ -5,22 +5,22 @@ const path = require('path');
 const configDirectory = __dirname;
 
 /** pack 后与配置同目录的入口。 */
-const packedIndexPath = path.join(configDirectory, 'index.js');
+const packedEntryPath = path.join(configDirectory, 'a380.js');
 
 /** 在项目根执行时的入口。 */
-const projectBundleIndexPath = path.join(configDirectory, 'bundle', 'index.js');
+const projectBundleEntryPath = path.join(configDirectory, 'bundle', 'a380.js');
 
 let scriptPath;
 let workingDirectory;
 
-if (fs.existsSync(packedIndexPath)) {
-  scriptPath = packedIndexPath;
+if (fs.existsSync(packedEntryPath)) {
+  scriptPath = packedEntryPath;
   workingDirectory = configDirectory;
-} else if (fs.existsSync(projectBundleIndexPath)) {
-  scriptPath = projectBundleIndexPath;
+} else if (fs.existsSync(projectBundleEntryPath)) {
+  scriptPath = projectBundleEntryPath;
   workingDirectory = configDirectory;
 } else {
-  throw new Error('index.js not found, run npm run pack first');
+  throw new Error('a380.js not found, run npm run pack first');
 }
 
 module.exports = {

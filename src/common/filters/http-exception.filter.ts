@@ -1,5 +1,5 @@
-import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus } from '@nestjs/common';
-import { Response } from 'express';
+import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { ResponseCode } from '../constants';
 import { isEmpty, isObject } from '../tools';
 
@@ -8,11 +8,15 @@ import { isEmpty, isObject } from '../tools';
  */
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger(HttpExceptionFilter.name);
+
   /**
-   * 输出统一失败结构。
+   * 输出统一失败结构。非业务异常会打日志，避免只看到「系统异常」却没有堆栈。
    */
   catch(exception: unknown, host: ArgumentsHost): void {
-    const response = host.switchToHttp().getResponse<Response>();
+    const httpHost = host.switchToHttp();
+    const response = httpHost.getResponse<Response>();
+    const request = httpHost.getRequest<Request>();
     if (this.isFileTooLarge(exception)) {
       response.status(HttpStatus.BAD_REQUEST).json({
         code: ResponseCode.FAIL,
@@ -23,6 +27,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
     }
     const statusCode = exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
     const message = this.resolveMessage(exception);
+    // 非 HttpException（如连库失败）原先只回「系统异常」且不打日志，这里补上。
+    if (!(exception instanceof HttpException)) {
+      const requestPath = `${request.method || ''} ${request.originalUrl || request.url || ''}`.trim();
+      this.logger.error(`系统异常 ${requestPath}`, exception instanceof Error ? exception.stack : String(exception));
+    }
     response.status(statusCode).json({
       code: ResponseCode.FAIL,
       message,
