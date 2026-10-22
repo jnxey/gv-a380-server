@@ -23,16 +23,42 @@ import { FinanceBillService } from '../core/finance/finance-bill.service';
 import { StoreService } from './store.service';
 
 /**
+ * 保存商品分类。
+ */
+export class SaveStoreProductCategoryDto {
+  @IsString()
+  @IsNotEmpty()
+  categoryName: string;
+
+  @IsIn(Object.values(RecordStatus))
+  status: string;
+}
+
+/**
+ * 拖动排序提交的编号列表。
+ */
+export class SortIdListDto {
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsString({ each: true })
+  idList: string[];
+}
+
+/**
  * 保存商品。
  */
 export class SaveStoreProductDto {
   @IsString()
   @IsNotEmpty()
+  categoryId: string;
+
+  @IsString()
+  @IsNotEmpty()
   productName: string;
 
-  @IsOptional()
   @IsString()
-  barcode?: string;
+  @IsNotEmpty()
+  barcode: string;
 
   @IsNotEmpty()
   salePrice: string | number;
@@ -155,6 +181,10 @@ export class StoreProductQueryDto extends PageQueryDto {
   @IsOptional()
   @IsString()
   keyword?: string;
+
+  @IsOptional()
+  @IsString()
+  categoryId?: string;
 }
 
 /**
@@ -168,6 +198,10 @@ export class CreateAppStoreSaleDto {
   @IsString()
   @IsNotEmpty()
   cipherText: string;
+
+  @IsString()
+  @IsNotEmpty()
+  deliveryAddress: string;
 
   @IsArray()
   @ArrayNotEmpty()
@@ -237,12 +271,60 @@ export class StoreAdminController {
   }
 
   /**
+   * 查询当前门店商品分类。
+   */
+  @Get('product-categories')
+  @RequirePermission(PermissionCode.STORE_CATEGORY_QUERY)
+  listProductCategories() {
+    return this.storeService.listProductCategories();
+  }
+
+  /**
+   * 新建商品分类。
+   */
+  @Post('product-categories')
+  @RequirePermission(PermissionCode.STORE_CATEGORY_SAVE)
+  createProductCategory(@Body() saveStoreProductCategoryDto: SaveStoreProductCategoryDto) {
+    return this.storeService.createProductCategory({
+      categoryName: saveStoreProductCategoryDto.categoryName,
+      status: saveStoreProductCategoryDto.status,
+    });
+  }
+
+  /**
+   * 按拖动结果保存商品分类顺序。
+   */
+  @Put('product-categories/sort')
+  @RequirePermission(PermissionCode.STORE_CATEGORY_SAVE)
+  async sortProductCategories(@Body() sortIdListDto: SortIdListDto) {
+    await this.storeService.sortProductCategories(sortIdListDto.idList);
+    return null;
+  }
+
+  /**
+   * 修改商品分类。
+   */
+  @Put('product-categories/:categoryId')
+  @RequirePermission(PermissionCode.STORE_CATEGORY_SAVE)
+  updateProductCategory(@Param('categoryId') categoryId: string, @Body() saveStoreProductCategoryDto: SaveStoreProductCategoryDto) {
+    return this.storeService.updateProductCategory(categoryId, {
+      categoryName: saveStoreProductCategoryDto.categoryName,
+      status: saveStoreProductCategoryDto.status,
+    });
+  }
+
+  /**
    * 分页查询商品。
    */
   @Get('products')
   @RequirePermission(PermissionCode.STORE_PRODUCT_QUERY)
   pageProducts(@Query() storeProductQueryDto: StoreProductQueryDto) {
-    return this.storeService.pageProducts(storeProductQueryDto.keyword || '', Number(storeProductQueryDto.page), Number(storeProductQueryDto.pageSize));
+    return this.storeService.pageProducts(
+      storeProductQueryDto.keyword || '',
+      storeProductQueryDto.categoryId || '',
+      Number(storeProductQueryDto.page),
+      Number(storeProductQueryDto.pageSize),
+    );
   }
 
   /**
@@ -252,11 +334,22 @@ export class StoreAdminController {
   @RequirePermission(PermissionCode.STORE_PRODUCT_SAVE)
   createProduct(@Body() saveStoreProductDto: SaveStoreProductDto) {
     return this.storeService.createProduct({
+      categoryId: saveStoreProductDto.categoryId,
       productName: saveStoreProductDto.productName,
-      barcode: saveStoreProductDto.barcode || '',
+      barcode: saveStoreProductDto.barcode,
       salePrice: saveStoreProductDto.salePrice,
       status: saveStoreProductDto.status,
     });
+  }
+
+  /**
+   * 按拖动结果保存商品顺序。
+   */
+  @Put('products/sort')
+  @RequirePermission(PermissionCode.STORE_PRODUCT_SAVE)
+  async sortProducts(@Body() sortIdListDto: SortIdListDto) {
+    await this.storeService.sortProducts(sortIdListDto.idList);
+    return null;
   }
 
   /**
@@ -266,8 +359,9 @@ export class StoreAdminController {
   @RequirePermission(PermissionCode.STORE_PRODUCT_SAVE)
   updateProduct(@Param('productId') productId: string, @Body() saveStoreProductDto: SaveStoreProductDto) {
     return this.storeService.updateProduct(productId, {
+      categoryId: saveStoreProductDto.categoryId,
       productName: saveStoreProductDto.productName,
-      barcode: saveStoreProductDto.barcode || '',
+      barcode: saveStoreProductDto.barcode,
       salePrice: saveStoreProductDto.salePrice,
       status: saveStoreProductDto.status,
     });

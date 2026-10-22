@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS store_sale (
   amount DECIMAL(12,2) NOT NULL COMMENT '销售金额',
   operator_id BIGINT UNSIGNED NULL COMMENT '操作人后台账号ID',
   remark VARCHAR(128) NOT NULL DEFAULT '' COMMENT '备注',
+  delivery_address VARCHAR(255) NOT NULL DEFAULT '' COMMENT '收货地址',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_store_sale_no (sale_no),

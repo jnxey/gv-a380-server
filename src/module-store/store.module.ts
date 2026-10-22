@@ -6,7 +6,7 @@ import { MemberModule } from '../core/member/member.module';
 import { ShopModule } from '../core/shop/shop.module';
 import { StoreAdminController, StoreAppController } from './store.controller';
 import { StoreShopAdminController } from './store-shop.controller';
-import { StoreProduct, StoreProductImage, StorePurchase, StorePurchaseItem, StoreSale, StoreSaleItem } from './store.entities';
+import { StoreProduct, StoreProductCategory, StoreProductImage, StorePurchase, StorePurchaseItem, StoreSale, StoreSaleItem } from './store.entities';
 import { StoreService } from './store.service';
 
 /**
@@ -14,7 +14,7 @@ import { StoreService } from './store.service';
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([StoreProduct, StoreProductImage, StorePurchase, StorePurchaseItem, StoreSale, StoreSaleItem]),
+    TypeOrmModule.forFeature([StoreProduct, StoreProductCategory, StoreProductImage, StorePurchase, StorePurchaseItem, StoreSale, StoreSaleItem]),
     AuthModule,
     FinanceModule,
     MemberModule,

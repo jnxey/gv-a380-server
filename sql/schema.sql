@@ -413,20 +413,36 @@ CREATE TABLE hotel_stay_record (
 -- ----------------------------
 -- store：商铺商品与进销存
 -- ----------------------------
+CREATE TABLE store_product_category (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  shop_id BIGINT UNSIGNED NOT NULL COMMENT '门店ID',
+  category_name VARCHAR(64) NOT NULL COMMENT '分类名称',
+  sort_order INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '排序，从0开始',
+  status VARCHAR(16) NOT NULL COMMENT '状态：ENABLED、DISABLED',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (id),
+  KEY idx_store_product_category_shop (shop_id, status, sort_order),
+  CONSTRAINT fk_store_product_category_shop FOREIGN KEY (shop_id) REFERENCES shop (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='商铺商品分类';
+
 CREATE TABLE store_product (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
   shop_id BIGINT UNSIGNED NOT NULL COMMENT '门店ID',
+  category_id BIGINT UNSIGNED NOT NULL COMMENT '分类ID',
   product_name VARCHAR(64) NOT NULL COMMENT '商品名称',
   barcode VARCHAR(32) NOT NULL DEFAULT '' COMMENT '条码',
   sale_price DECIMAL(12,2) NOT NULL COMMENT '售价',
   cost_price DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT '进价',
   stock_quantity INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '库存数量',
+  sort_order INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '排序，从0开始',
   status VARCHAR(16) NOT NULL COMMENT '状态：ENABLED、DISABLED',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (id),
-  KEY idx_store_product_shop (shop_id, status),
-  KEY idx_store_product_barcode (shop_id, barcode),
-  CONSTRAINT fk_store_product_shop FOREIGN KEY (shop_id) REFERENCES shop (id)
+  UNIQUE KEY uk_store_product_shop_barcode (shop_id, barcode),
+  KEY idx_store_product_shop (shop_id, status, sort_order),
+  KEY idx_store_product_category (category_id),
+  CONSTRAINT fk_store_product_shop FOREIGN KEY (shop_id) REFERENCES shop (id),
+  CONSTRAINT fk_store_product_category FOREIGN KEY (category_id) REFERENCES store_product_category (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='商铺商品';
 
 CREATE TABLE store_product_image (
@@ -477,6 +493,7 @@ CREATE TABLE store_sale (
   amount DECIMAL(12,2) NOT NULL COMMENT '销售金额',
   operator_id BIGINT UNSIGNED NULL COMMENT '操作人后台账号ID',
   remark VARCHAR(128) NOT NULL DEFAULT '' COMMENT '备注',
+  delivery_address VARCHAR(255) NOT NULL DEFAULT '' COMMENT '收货地址',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_store_sale_no (sale_no),

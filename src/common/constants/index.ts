@@ -320,6 +320,8 @@ export const PermissionCode = {
   HOTEL_DEDUCT: 'hotel:deduct',
   STORE_SHOP_QUERY: 'store:shop:query',
   STORE_SHOP_SAVE: 'store:shop:save',
+  STORE_CATEGORY_QUERY: 'store:category:query',
+  STORE_CATEGORY_SAVE: 'store:category:save',
   STORE_PRODUCT_QUERY: 'store:product:query',
   STORE_PRODUCT_SAVE: 'store:product:save',
   STORE_PURCHASE_QUERY: 'store:purchase:query',

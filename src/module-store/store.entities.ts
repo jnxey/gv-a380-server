@@ -2,6 +2,30 @@ import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeor
 import { decimalTransformer } from '../common/tools/column';
 
 /**
+ * 商铺商品分类。按门店隔离。
+ */
+@Entity('store_product_category')
+export class StoreProductCategory {
+  @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
+  id: string;
+
+  @Column({ type: 'bigint', unsigned: true })
+  shopId: string;
+
+  @Column({ type: 'varchar', length: 64 })
+  categoryName: string;
+
+  @Column({ type: 'int', unsigned: true, default: 0 })
+  sortOrder: number;
+
+  @Column({ type: 'varchar', length: 16 })
+  status: string;
+
+  @CreateDateColumn({ type: 'datetime' })
+  createdAt: string;
+}
+
+/**
  * 商铺商品。库存只由进货和销售改。
  */
 @Entity('store_product')
@@ -11,6 +35,9 @@ export class StoreProduct {
 
   @Column({ type: 'bigint', unsigned: true })
   shopId: string;
+
+  @Column({ type: 'bigint', unsigned: true })
+  categoryId: string;
 
   @Column({ type: 'varchar', length: 64 })
   productName: string;
@@ -26,6 +53,9 @@ export class StoreProduct {
 
   @Column({ type: 'int', unsigned: true, default: 0 })
   stockQuantity: number;
+
+  @Column({ type: 'int', unsigned: true, default: 0 })
+  sortOrder: number;
 
   @Column({ type: 'varchar', length: 16 })
   status: string;
@@ -137,6 +167,9 @@ export class StoreSale {
 
   @Column({ type: 'varchar', length: 128, default: '' })
   remark: string;
+
+  @Column({ type: 'varchar', length: 255, default: '' })
+  deliveryAddress: string;
 
   @CreateDateColumn({ type: 'datetime' })
   createdAt: string;

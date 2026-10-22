@@ -24,12 +24,21 @@ import { ChatUserClient } from '../core/member/chat-user.client';
 import { MemberBalanceService } from '../core/member/member-balance.service';
 import { MemberQueryService } from '../core/member/member-query.service';
 import { ShopService } from '../core/shop/shop.service';
-import { StoreProduct, StoreProductImage, StorePurchase, StorePurchaseItem, StoreSale, StoreSaleItem } from './store.entities';
+import { StoreProduct, StoreProductCategory, StoreProductImage, StorePurchase, StorePurchaseItem, StoreSale, StoreSaleItem } from './store.entities';
+
+/**
+ * 保存商品分类的入参。
+ */
+export interface SaveStoreProductCategoryCommand {
+  categoryName: string;
+  status: string;
+}
 
 /**
  * 保存商品的入参。
  */
 export interface SaveStoreProductCommand {
+  categoryId: string;
   productName: string;
   barcode: string;
   salePrice: string | number;
@@ -70,6 +79,7 @@ export interface CreateStoreSaleCommand {
 export interface CreateAppStoreSaleCommand {
   shopId: string;
   cipherText: string;
+  deliveryAddress: string;
   itemList: StoreSaleLineCommand[];
 }
 
@@ -93,9 +103,19 @@ export interface StoreProductImageFile {
 /**
  * 商品展示。
  */
+export interface StoreProductCategoryView {
+  categoryId: string;
+  shopId: string;
+  categoryName: string;
+  sortOrder: number;
+  status: string;
+}
+
 export interface StoreProductView {
   productId: string;
   shopId: string;
+  categoryId: string;
+  categoryName: string;
   productName: string;
   barcode: string;
   salePrice: string;
@@ -134,6 +154,7 @@ export interface StoreSaleView {
   payMethod: string;
   amount: string;
   remark: string;
+  deliveryAddress: string;
   createdAt: string;
   itemList: Array<{
     productId: string;
@@ -152,6 +173,7 @@ export class StoreService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     @InjectRepository(StoreProduct) private readonly storeProductRepository: Repository<StoreProduct>,
+    @InjectRepository(StoreProductCategory) private readonly storeProductCategoryRepository: Repository<StoreProductCategory>,
     @InjectRepository(StoreProductImage) private readonly storeProductImageRepository: Repository<StoreProductImage>,
     @InjectRepository(StorePurchase) private readonly storePurchaseRepository: Repository<StorePurchase>,
     @InjectRepository(StorePurchaseItem) private readonly storePurchaseItemRepository: Repository<StorePurchaseItem>,
@@ -236,9 +258,94 @@ export class StoreService {
   }
 
   /**
+   * 查询当前门店全部商品分类。
+   */
+  async listProductCategories(): Promise<StoreProductCategoryView[]> {
+    const shopId = await this.requireEnabledStoreShop();
+    const categoryList = await this.storeProductCategoryRepository.find({
+      where: { shopId },
+      order: { sortOrder: 'ASC', id: 'ASC' },
+    });
+    return categoryList.map((categoryRow) => this.toProductCategoryView(categoryRow));
+  }
+
+  /**
+   * 新建商品分类。排序排到当前门店最后。
+   */
+  async createProductCategory(command: SaveStoreProductCategoryCommand): Promise<StoreProductCategoryView> {
+    const shopId = await this.requireEnabledStoreShop();
+    const categoryName = command.categoryName.trim();
+    if (isEmpty(categoryName)) {
+      throw new BusinessException('请填写分类名称');
+    }
+    if (isOneOf(command.status, Object.values(RecordStatus)) !== true) {
+      throw new BusinessException('分类状态不正确');
+    }
+    const categoryRow = new StoreProductCategory();
+    categoryRow.shopId = shopId;
+    categoryRow.categoryName = categoryName;
+    categoryRow.sortOrder = await this.nextProductCategorySortOrder(shopId);
+    categoryRow.status = command.status;
+    const savedCategory = await this.storeProductCategoryRepository.save(categoryRow);
+    return this.toProductCategoryView(savedCategory);
+  }
+
+  /**
+   * 修改商品分类。不改排序。
+   */
+  async updateProductCategory(categoryId: string, command: SaveStoreProductCategoryCommand): Promise<StoreProductCategoryView> {
+    const shopId = await this.requireEnabledStoreShop();
+    const categoryRow = await this.storeProductCategoryRepository.findOne({ where: { id: categoryId, shopId } });
+    if (isEmpty(categoryRow)) {
+      throw new BusinessException('分类不存在');
+    }
+    const categoryName = command.categoryName.trim();
+    if (isEmpty(categoryName)) {
+      throw new BusinessException('请填写分类名称');
+    }
+    if (isOneOf(command.status, Object.values(RecordStatus)) !== true) {
+      throw new BusinessException('分类状态不正确');
+    }
+    categoryRow.categoryName = categoryName;
+    categoryRow.status = command.status;
+    const savedCategory = await this.storeProductCategoryRepository.save(categoryRow);
+    return this.toProductCategoryView(savedCategory);
+  }
+
+  /**
+   * 按拖动结果重排当前门店的全部商品分类。
+   */
+  async sortProductCategories(idList: string[]): Promise<void> {
+    const shopId = await this.requireEnabledStoreShop();
+    if (isEmpty(idList)) {
+      throw new BusinessException('分类排序不完整');
+    }
+    // 1. 取出当前门店全部分类编号
+    const categoryList = await this.storeProductCategoryRepository.find({ where: { shopId } });
+    const existingIdSet = new Set(categoryList.map((categoryRow) => toIdentifier(categoryRow.id)));
+    if (idList.length !== existingIdSet.size) {
+      throw new BusinessException('分类排序不完整');
+    }
+    // 2. 不能缺、不能多、不能重复
+    const seenIdSet = new Set<string>();
+    idList.forEach((categoryId) => {
+      if (existingIdSet.has(categoryId) !== true || seenIdSet.has(categoryId)) {
+        throw new BusinessException('分类排序不完整');
+      }
+      seenIdSet.add(categoryId);
+    });
+    // 3. 下标就是新的排序
+    await this.dataSource.transaction(async (entityManager) => {
+      for (let sortOrder = 0; sortOrder < idList.length; sortOrder += 1) {
+        await entityManager.update(StoreProductCategory, { id: idList[sortOrder], shopId }, { sortOrder });
+      }
+    });
+  }
+
+  /**
    * 分页查询当前门店商品。
    */
-  async pageProducts(keyword: string, page: number, pageSize: number): Promise<PageResult<StoreProductView>> {
+  async pageProducts(keyword: string, categoryId: string, page: number, pageSize: number): Promise<PageResult<StoreProductView>> {
     const shopId = await this.requireEnabledStoreShop();
     const pageSetting = resolvePage(page, pageSize);
     const queryBuilder = this.storeProductRepository.createQueryBuilder('storeProduct').where('storeProduct.shopId = :shopId', { shopId });
@@ -248,7 +355,10 @@ export class StoreService {
         keyword: `%${cleanedKeyword}%`,
       });
     }
-    queryBuilder.orderBy('storeProduct.id', 'DESC');
+    if (isEmpty(categoryId) !== true) {
+      queryBuilder.andWhere('storeProduct.categoryId = :categoryId', { categoryId: toIdentifier(categoryId) });
+    }
+    queryBuilder.orderBy('storeProduct.sortOrder', 'ASC').addOrderBy('storeProduct.id', 'ASC');
     const total = await queryBuilder.getCount();
     const productList = await queryBuilder.skip(pageSetting.skip).take(pageSetting.pageSize).getMany();
     return {
@@ -266,13 +376,13 @@ export class StoreService {
     const enabledShop = await this.shopService.findEnabledShop(shopId, ShopType.STORE);
     const productList = await this.storeProductRepository.find({
       where: { shopId: toIdentifier(enabledShop.id), status: RecordStatus.ENABLED },
-      order: { id: 'DESC' },
+      order: { sortOrder: 'ASC', id: 'ASC' },
     });
     return this.toProductViewList(productList);
   }
 
   /**
-   * 新建商品。库存从 0 开始，进价先记 0。
+   * 新建商品。库存从 0 开始，进价先记 0。排序排到当前门店最后。
    */
   async createProduct(command: SaveStoreProductCommand): Promise<StoreProductView> {
     const shopId = await this.requireEnabledStoreShop();
@@ -280,6 +390,12 @@ export class StoreService {
     if (isEmpty(productName)) {
       throw new BusinessException('请填写商品名称');
     }
+    const barcode = isEmpty(command.barcode) ? '' : command.barcode.trim();
+    if (isEmpty(barcode)) {
+      throw new BusinessException('请填写条码');
+    }
+    await this.assertBarcodeAvailable(shopId, barcode, '');
+    const categoryRow = await this.requireProductCategory(shopId, command.categoryId);
     if (isPositiveMoney(command.salePrice) !== true) {
       throw new BusinessException('售价必须大于0');
     }
@@ -288,14 +404,48 @@ export class StoreService {
     }
     const storeProduct = new StoreProduct();
     storeProduct.shopId = shopId;
+    storeProduct.categoryId = toIdentifier(categoryRow.id);
     storeProduct.productName = productName;
-    storeProduct.barcode = isEmpty(command.barcode) ? '' : command.barcode.trim();
+    storeProduct.barcode = barcode;
     storeProduct.salePrice = toMoneyString(command.salePrice);
     storeProduct.costPrice = toMoneyString(0);
     storeProduct.stockQuantity = 0;
+    storeProduct.sortOrder = await this.nextProductSortOrder(shopId);
     storeProduct.status = command.status;
     const savedProduct = await this.storeProductRepository.save(storeProduct);
-    return this.toProductView(savedProduct, []);
+    return this.toProductView(savedProduct, [], categoryRow.categoryName);
+  }
+
+  /**
+   * 按拖动结果重排商品。只改提交编号在本店内的相对顺序，兼容分页与筛选。
+   */
+  async sortProducts(idList: string[]): Promise<void> {
+    const shopId = await this.requireEnabledStoreShop();
+    if (isEmpty(idList)) {
+      throw new BusinessException('商品排序不完整');
+    }
+    // 1. 编号不能重复，且必须都属于当前门店
+    const seenIdSet = new Set<string>();
+    idList.forEach((productId) => {
+      if (seenIdSet.has(productId)) {
+        throw new BusinessException('商品排序不完整');
+      }
+      seenIdSet.add(productId);
+    });
+    const productList = await this.storeProductRepository.find({
+      where: { shopId, id: In(idList) },
+    });
+    if (productList.length !== idList.length) {
+      throw new BusinessException('商品排序不完整');
+    }
+    // 2. 取出这些商品原来的排序值，按从小到大排好
+    const sortOrderList = productList.map((storeProduct) => storeProduct.sortOrder).sort((left, right) => left - right);
+    // 3. 按拖动后的顺序把排序值写回去
+    await this.dataSource.transaction(async (entityManager) => {
+      for (let index = 0; index < idList.length; index += 1) {
+        await entityManager.update(StoreProduct, { id: idList[index], shopId }, { sortOrder: sortOrderList[index] });
+      }
+    });
   }
 
   /**
@@ -311,14 +461,21 @@ export class StoreService {
     if (isEmpty(productName)) {
       throw new BusinessException('请填写商品名称');
     }
+    const barcode = isEmpty(command.barcode) ? '' : command.barcode.trim();
+    if (isEmpty(barcode)) {
+      throw new BusinessException('请填写条码');
+    }
+    await this.assertBarcodeAvailable(shopId, barcode, toIdentifier(storeProduct.id));
+    const categoryRow = await this.requireProductCategory(shopId, command.categoryId);
     if (isPositiveMoney(command.salePrice) !== true) {
       throw new BusinessException('售价必须大于0');
     }
     if (isOneOf(command.status, Object.values(RecordStatus)) !== true) {
       throw new BusinessException('商品状态不正确');
     }
+    storeProduct.categoryId = toIdentifier(categoryRow.id);
     storeProduct.productName = productName;
-    storeProduct.barcode = isEmpty(command.barcode) ? '' : command.barcode.trim();
+    storeProduct.barcode = barcode;
     storeProduct.salePrice = toMoneyString(command.salePrice);
     storeProduct.status = command.status;
     const savedProduct = await this.storeProductRepository.save(storeProduct);
@@ -493,6 +650,7 @@ export class StoreService {
       payMethod: command.payMethod,
       memberId: isEmpty(command.memberId) ? null : toIdentifier(command.memberId),
       remark: command.remark,
+      deliveryAddress: '',
       itemList: command.itemList,
       operatorId: command.operatorId,
       securityKeyUsername: '',
@@ -505,6 +663,10 @@ export class StoreService {
   async createAppSale(memberId: string, command: CreateAppStoreSaleCommand): Promise<StoreSaleView> {
     const enabledShop = await this.shopService.findEnabledShop(command.shopId, ShopType.STORE);
     const shopId = toIdentifier(enabledShop.id);
+    const deliveryAddress = isEmpty(command.deliveryAddress) ? '' : command.deliveryAddress.trim();
+    if (isEmpty(deliveryAddress)) {
+      throw new BusinessException('请填写收货地址');
+    }
     const securityKeyUsername = this.miniappSignService.readConsumerDoorLockUsername(command.cipherText);
     const memberAccount = await this.memberQueryService.findById(memberId);
     if (isEmpty(memberAccount) || memberAccount.username !== securityKeyUsername) {
@@ -515,6 +677,7 @@ export class StoreService {
       payMethod: StorePayMethod.MEMBER,
       memberId: toIdentifier(memberId),
       remark: '小程序购买',
+      deliveryAddress,
       itemList: command.itemList,
       operatorId: null,
       securityKeyUsername,
@@ -529,6 +692,7 @@ export class StoreService {
     payMethod: string;
     memberId: string | null;
     remark: string;
+    deliveryAddress: string;
     itemList: StoreSaleLineCommand[];
     operatorId: string | null;
     securityKeyUsername: string;
@@ -584,6 +748,7 @@ export class StoreService {
       storeSale.amount = toMoneyString(saleAmount);
       storeSale.operatorId = command.operatorId;
       storeSale.remark = isEmpty(command.remark) ? '' : command.remark.trim();
+      storeSale.deliveryAddress = isEmpty(command.deliveryAddress) ? '' : command.deliveryAddress.trim();
       const savedSale = await entityManager.getRepository(StoreSale).save(storeSale);
       for (const saleItem of saleItemList) {
         saleItem.saleId = toIdentifier(savedSale.id);
@@ -717,12 +882,90 @@ export class StoreService {
   }
 
   /**
+   * 新建分类时排到当前门店最后。没有记录时从 0 开始。
+   */
+  private async nextProductCategorySortOrder(shopId: string): Promise<number> {
+    const maxRow = await this.storeProductCategoryRepository
+      .createQueryBuilder('categoryRow')
+      .select('MAX(categoryRow.sortOrder)', 'maxSortOrder')
+      .where('categoryRow.shopId = :shopId', { shopId })
+      .getRawOne<{ maxSortOrder: number | string | null }>();
+    if (isEmpty(maxRow) || isEmpty(maxRow.maxSortOrder)) {
+      return 0;
+    }
+    return Number(maxRow.maxSortOrder) + 1;
+  }
+
+  /**
+   * 新建商品时排到当前门店最后。没有记录时从 0 开始。
+   */
+  private async nextProductSortOrder(shopId: string): Promise<number> {
+    const maxRow = await this.storeProductRepository
+      .createQueryBuilder('storeProduct')
+      .select('MAX(storeProduct.sortOrder)', 'maxSortOrder')
+      .where('storeProduct.shopId = :shopId', { shopId })
+      .getRawOne<{ maxSortOrder: number | string | null }>();
+    if (isEmpty(maxRow) || isEmpty(maxRow.maxSortOrder)) {
+      return 0;
+    }
+    return Number(maxRow.maxSortOrder) + 1;
+  }
+
+  /**
+   * 校验分类属于当前门店。
+   */
+  private async requireProductCategory(shopId: string, categoryId: string): Promise<StoreProductCategory> {
+    if (isEmpty(categoryId)) {
+      throw new BusinessException('请选择商品分类');
+    }
+    const categoryRow = await this.storeProductCategoryRepository.findOne({
+      where: { id: toIdentifier(categoryId), shopId },
+    });
+    if (isEmpty(categoryRow)) {
+      throw new BusinessException('分类不存在');
+    }
+    return categoryRow;
+  }
+
+  /**
+   * 同门店条码不可重复。excludeProductId 用于改商品时排除自身。
+   */
+  private async assertBarcodeAvailable(shopId: string, barcode: string, excludeProductId: string): Promise<void> {
+    const queryBuilder = this.storeProductRepository
+      .createQueryBuilder('storeProduct')
+      .where('storeProduct.shopId = :shopId', { shopId })
+      .andWhere('storeProduct.barcode = :barcode', { barcode });
+    if (isEmpty(excludeProductId) !== true) {
+      queryBuilder.andWhere('storeProduct.id != :excludeProductId', { excludeProductId });
+    }
+    const existingProduct = await queryBuilder.getOne();
+    if (isEmpty(existingProduct) !== true) {
+      throw new BusinessException('条码已存在');
+    }
+  }
+
+  /**
+   * 转成前端使用的分类字段。
+   */
+  private toProductCategoryView(categoryRow: StoreProductCategory): StoreProductCategoryView {
+    return {
+      categoryId: toIdentifier(categoryRow.id),
+      shopId: toIdentifier(categoryRow.shopId),
+      categoryName: categoryRow.categoryName,
+      sortOrder: categoryRow.sortOrder,
+      status: categoryRow.status,
+    };
+  }
+
+  /**
    * 把商品实体转成前端字段。
    */
-  private toProductView(storeProduct: StoreProduct, imageList: StoreProductImageView[]): StoreProductView {
+  private toProductView(storeProduct: StoreProduct, imageList: StoreProductImageView[], categoryName: string): StoreProductView {
     return {
       productId: toIdentifier(storeProduct.id),
       shopId: toIdentifier(storeProduct.shopId),
+      categoryId: toIdentifier(storeProduct.categoryId),
+      categoryName: isEmpty(categoryName) ? '' : categoryName,
       productName: storeProduct.productName,
       barcode: isEmpty(storeProduct.barcode) ? '' : storeProduct.barcode,
       salePrice: storeProduct.salePrice,
@@ -734,7 +977,7 @@ export class StoreService {
   }
 
   /**
-   * 批量转成带图片列表的商品字段。
+   * 批量转成带图片、分类名称的商品字段。
    */
   private async toProductViewList(productList: StoreProduct[]): Promise<StoreProductView[]> {
     const productIdList = productList.map((storeProduct) => toIdentifier(storeProduct.id));
@@ -744,12 +987,20 @@ export class StoreService {
           where: { productId: In(productIdList) },
           order: { sortOrder: 'ASC', id: 'ASC' },
         });
+    const categoryIdList = Array.from(
+      new Set(productList.map((storeProduct) => toIdentifier(storeProduct.categoryId)).filter((categoryId) => isEmpty(categoryId) !== true)),
+    );
+    const categoryList = categoryIdList.length === 0
+      ? []
+      : await this.storeProductCategoryRepository.find({ where: { id: In(categoryIdList) } });
+    const categoryNameMap = new Map(categoryList.map((categoryRow) => [toIdentifier(categoryRow.id), categoryRow.categoryName]));
     return productList.map((storeProduct) => {
       const productId = toIdentifier(storeProduct.id);
       const productImageList = imageList
         .filter((productImage) => toIdentifier(productImage.productId) === productId)
         .map((productImage) => this.toProductImageView(productImage));
-      return this.toProductView(storeProduct, productImageList);
+      const categoryName = categoryNameMap.get(toIdentifier(storeProduct.categoryId)) || '';
+      return this.toProductView(storeProduct, productImageList, categoryName);
     });
   }
 
@@ -807,6 +1058,7 @@ export class StoreService {
         payMethod: sale.payMethod,
         amount: sale.amount,
         remark: isEmpty(sale.remark) ? '' : sale.remark,
+        deliveryAddress: isEmpty(sale.deliveryAddress) ? '' : sale.deliveryAddress,
         createdAt: sale.createdAt,
         itemList: itemList.map((saleItem) => ({
           productId: toIdentifier(saleItem.productId),

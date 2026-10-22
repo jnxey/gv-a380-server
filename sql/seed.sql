@@ -76,6 +76,8 @@ INSERT INTO sys_permission (id, permission_code, permission_name, module_code, m
 (40, 'store:sale:cash', '商铺现金收款', 'STORE', 64),
 (41, 'store:sale:member', '商铺会员收款', 'STORE', 64),
 (42, 'store:bill:query', '商铺财务流水查询', 'STORE', 66),
+(43, 'store:category:query', '商铺商品分类查询', 'STORE', 67),
+(44, 'store:category:save', '商铺商品分类保存', 'STORE', 67),
 (21, 'system:user:query', '账号查询', 'CORE', 51),
 (22, 'system:user:save', '账号保存', 'CORE', 51),
 (23, 'system:role:query', '角色查询', 'CORE', 52),
@@ -102,8 +104,10 @@ INSERT INTO sys_role_permission (id, role_id, permission_id) VALUES
 (79, 6, 12),
 (80, 1, 32),(81, 5, 32),(82, 6, 32),
 (83, 1, 33),(84, 1, 34),(85, 1, 35),(86, 1, 36),(87, 1, 37),(88, 1, 38),(89, 1, 39),(90, 1, 40),(91, 1, 41),(92, 1, 42),
+(107, 1, 43),(108, 1, 44),
 (93, 7, 33),(94, 7, 34),(95, 7, 35),(96, 7, 36),(97, 7, 37),(98, 7, 38),(99, 7, 39),(100, 7, 40),(101, 7, 41),(102, 7, 42),
-(103, 8, 35),(104, 8, 39),(105, 8, 40),(106, 8, 41);
+(109, 7, 43),(110, 7, 44),
+(103, 8, 35),(104, 8, 39),(105, 8, 40),(106, 8, 41),(111, 8, 43);
 
 INSERT INTO sys_menu (id, parent_id, menu_name, menu_path, component_path, permission_code, module_code, sort_order) VALUES
 (1, 0, 'A380中心', '/member', '', '', 'CORE', 10),
@@ -128,6 +132,7 @@ INSERT INTO sys_menu (id, parent_id, menu_name, menu_path, component_path, permi
 (45, 4, '财务流水', '/hotel/bill', 'hotel/bill', 'hotel:bill:query', 'HOTEL', 45),
 (6, 0, '商铺业务', '/store', '', '', 'STORE', 45),
 (61, 6, '门店管理', '/store/shop', 'store/shop', 'store:shop:query', 'STORE', 61),
+(67, 6, '商品分类', '/store/category', 'store/category', 'store:category:query', 'STORE', 615),
 (62, 6, '商品管理', '/store/product', 'store/product', 'store:product:query', 'STORE', 62),
 (63, 6, '进货入库', '/store/purchase', 'store/purchase', 'store:purchase:query', 'STORE', 63),
 (64, 6, '收银台', '/store/cashier', 'store/cashier', 'store:sale:query', 'STORE', 64),
@@ -152,9 +157,9 @@ INSERT INTO sys_role_menu (id, role_id, menu_id) VALUES
 (31, 1, 5),(32, 1, 51),(33, 1, 52),
 (34, 1, 40),
 (35, 5, 40),
-(51, 1, 6),(52, 1, 61),(53, 1, 62),(54, 1, 63),(55, 1, 64),(56, 1, 65),(57, 1, 66),
-(58, 7, 6),(59, 7, 61),(60, 7, 62),(61, 7, 63),(62, 7, 64),(63, 7, 65),(64, 7, 66),
-(65, 8, 6),(66, 8, 62),(67, 8, 64),(68, 8, 65);
+(51, 1, 6),(52, 1, 61),(69, 1, 67),(53, 1, 62),(54, 1, 63),(55, 1, 64),(56, 1, 65),(57, 1, 66),
+(58, 7, 6),(59, 7, 61),(70, 7, 67),(60, 7, 62),(61, 7, 63),(62, 7, 64),(63, 7, 65),(64, 7, 66),
+(65, 8, 6),(71, 8, 67),(66, 8, 62),(67, 8, 64),(68, 8, 65);
 
 INSERT INTO sys_user_shop (id, user_id, shop_id) VALUES
 (1, 1, 1),(2, 1, 2),(3, 1, 3),(12, 1, 4),
@@ -191,6 +196,9 @@ INSERT INTO hotel_room (id, shop_id, room_type_id, room_no, floor_no, room_statu
 (2, 3, 1, '802', '8', 'IDLE', 1),
 (3, 3, 2, '803', '8', 'IDLE', 2);
 
-INSERT INTO store_product (id, shop_id, product_name, barcode, sale_price, cost_price, stock_quantity, status) VALUES
-(1, 4, '矿泉水', '690000000001', 2.00, 1.00, 100, 'ENABLED'),
-(2, 4, '方便面', '690000000002', 5.00, 3.00, 50, 'ENABLED');
+INSERT INTO store_product_category (id, shop_id, category_name, sort_order, status) VALUES
+(1, 4, '未分类', 0, 'ENABLED');
+
+INSERT INTO store_product (id, shop_id, category_id, product_name, barcode, sale_price, cost_price, stock_quantity, sort_order, status) VALUES
+(1, 4, 1, '矿泉水', '690000000001', 2.00, 1.00, 100, 0, 'ENABLED'),
+(2, 4, 1, '方便面', '690000000002', 5.00, 3.00, 50, 1, 'ENABLED');
