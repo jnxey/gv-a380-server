@@ -10,6 +10,7 @@ import { ShopScopeInterceptor } from './common/interceptors/shop-scope.intercept
 import { RedisModule } from './common/redis/redis.module';
 import { ShopScopeModule } from './common/shop-scope/shop-scope.module';
 import { DatabaseSetting } from './common/constants';
+import { MainDatabaseEntities } from './common/database/main-database.entities';
 import { isNumber } from './common/tools';
 import { AuthModule } from './core/auth/auth.module';
 import { FinanceModule } from './core/finance/finance.module';
@@ -41,12 +42,8 @@ import { PointModule } from './module-point/point.module';
           username: configService.get<string>('DB_USERNAME'),
           password: configService.get<string>('DB_PASSWORD'),
           database: configService.get<string>('DB_DATABASE'),
-          entities: [
-            __dirname + '/**/*.entity.js',
-            __dirname + '/**/*.entities.js',
-            __dirname + '/**/*.entity.ts',
-            __dirname + '/**/*.entities.ts',
-          ],
+          // 显式实体列表，兼容 ncc 打包后无磁盘 glob 的场景。
+          entities: MainDatabaseEntities,
           synchronize: false,
           namingStrategy: new SnakeNamingStrategy(),
           timezone: '+08:00',
