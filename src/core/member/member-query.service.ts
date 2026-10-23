@@ -136,6 +136,19 @@ export class MemberQueryService {
   }
 
   /**
+   * 启用或停用余额账户。账户不存在时拒绝。
+   */
+  async updateStatus(memberId: string, status: string): Promise<ReturnType<MemberQueryService['toMemberView']>> {
+    const memberAccount = await this.findById(memberId);
+    if (isEmpty(memberAccount)) {
+      throw new BusinessException('会员不存在');
+    }
+    memberAccount.status = status;
+    const savedMemberAccount = await this.memberAccountRepository.save(memberAccount);
+    return this.toMemberView(savedMemberAccount);
+  }
+
+  /**
    * 后台按用户名分页查询。传入精确用户名时不再模糊匹配。余额集团通用，这里不做门店截断。
    */
   async pageMembers(keyword: string, username: string, pageValue: unknown, pageSizeValue: unknown): Promise<PageResult<MemberAccount>> {

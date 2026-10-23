@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Post, Query, UnauthorizedException, UseGuards } from '@nestjs/common';
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import Decimal from 'decimal.js';
-import { FinanceDirection, MerchantResponseCode, MerchantResponseMessage, ModuleCode, PermissionCode } from '../../common/constants';
+import { FinanceDirection, MerchantResponseCode, MerchantResponseMessage, ModuleCode, PermissionCode, RecordStatus } from '../../common/constants';
 import { PageQueryDto } from '../../common/dto/page-query.dto';
 import { CurrentAccount } from '../../common/decorators/current-account.decorator';
 import { Public, RequireModule, RequirePermission, RequiresShop } from '../../common/decorators/auth.decorators';
@@ -44,6 +44,18 @@ export class SyncMemberProfileDto {
   @IsString()
   @IsNotEmpty()
   username: string;
+}
+
+/**
+ * 启用或停用余额账户。
+ */
+export class UpdateMemberStatusDto {
+  @IsString()
+  @IsNotEmpty()
+  memberId: string;
+
+  @IsIn(Object.values(RecordStatus))
+  status: string;
 }
 
 /**
@@ -161,6 +173,15 @@ export class MemberAdminController {
     const chatUserProfile = await this.chatUserClient.findByKeyword(syncMemberProfileDto.username);
     const contact = this.chatUserClient.resolveContact(chatUserProfile.phone, chatUserProfile.email);
     return this.memberQueryService.syncProfile(syncMemberProfileDto.username, chatUserProfile.nickname, contact);
+  }
+
+  /**
+   * 启用或停用余额账户。
+   */
+  @Post('status')
+  @RequirePermission(PermissionCode.MEMBER_QUERY)
+  updateStatus(@Body() updateMemberStatusDto: UpdateMemberStatusDto) {
+    return this.memberQueryService.updateStatus(updateMemberStatusDto.memberId, updateMemberStatusDto.status);
   }
 
   /**
