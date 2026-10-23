@@ -1,4 +1,4 @@
-import { CallHandler, ExecutionContext, Injectable, NestInterceptor, StreamableFile } from '@nestjs/common';
+import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { ResponseCode, ResponseMessage } from '../constants';
@@ -15,10 +15,6 @@ export class ResponseInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     return next.handle().pipe(
       map((responseData: unknown) => {
-        // 瓦片是图片流，包进 data 后浏览器就显示不出来
-        if (responseData instanceof StreamableFile) {
-          return responseData;
-        }
         if (isObject(responseData) && Object.prototype.hasOwnProperty.call(responseData, 'code')) {
           return responseData;
         }

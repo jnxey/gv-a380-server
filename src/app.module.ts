@@ -19,7 +19,6 @@ import { NotifyModule } from './core/notify/notify.module';
 import { RbacModule } from './core/rbac/rbac.module';
 import { ShopModule } from './core/shop/shop.module';
 import { SystemModule } from './core/system/system.module';
-import { MapModule } from './core/map/map.module';
 import { HotelModule } from './module-hotel/hotel.module';
 import { KtvModule } from './module-ktv/ktv.module';
 import { StoreModule } from './module-store/store.module';
@@ -68,7 +67,6 @@ import { PointModule } from './module-point/point.module';
     HotelModule,
     StoreModule,
     PointModule,
-    MapModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
