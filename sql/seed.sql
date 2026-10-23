@@ -3,6 +3,7 @@ USE gv_a380;
 
 INSERT INTO shop (id, shop_code, shop_name, shop_type, address, contact_phone, status) VALUES
 (1, 'KTV01', 'KTV01店', 'KTV', '集团园区A座', '010-60000001', 'ENABLED'),
+(2, 'A380', 'A380中心', 'A380', '集团总部', '', 'ENABLED'),
 (3, 'HOTEL01', 'HOTEL01店', 'HOTEL', '集团园区C座', '010-60000003', 'ENABLED'),
 (4, 'STORE01', 'STORE01店', 'STORE', '集团园区D座', '010-60000004', 'ENABLED');
 
@@ -161,8 +162,8 @@ INSERT INTO sys_role_menu (id, role_id, menu_id) VALUES
 (65, 8, 6),(71, 8, 67),(66, 8, 62),(67, 8, 64),(68, 8, 65);
 
 INSERT INTO sys_user_shop (id, user_id, shop_id) VALUES
-(1, 1, 1),(3, 1, 3),(12, 1, 4),
-(4, 2, 1),(6, 2, 3),(13, 2, 4),
+(1, 1, 1),(2, 1, 2),(3, 1, 3),(12, 1, 4),
+(4, 2, 1),(5, 2, 2),(6, 2, 3),(13, 2, 4),
 (7, 3, 1),
 (9, 4, 1),
 (10, 5, 3),

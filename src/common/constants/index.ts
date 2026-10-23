@@ -61,6 +61,7 @@ export const ModuleCode = {
  * 门店类型。
  */
 export const ShopType = {
+  A380: 'A380',
   KTV: 'KTV',
   HOTEL: 'HOTEL',
   STORE: 'STORE',

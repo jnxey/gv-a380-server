@@ -142,6 +142,17 @@ export class ShopService {
   }
 
   /**
+   * 取唯一的启用中 A380 中心门店。充值流水固定记在这里。
+   */
+  async findEnabledA380Shop(): Promise<Shop> {
+    const shopList = await this.listEnabledByType(ShopType.A380);
+    if (shopList.length === 0) {
+      throw new BusinessException('未配置 A380 门店');
+    }
+    return shopList[0];
+  }
+
+  /**
    * 列出当前账号已绑定、且类型匹配的门店。未绑定任何门店时返回空列表。
    */
   async listBoundShops(boundShopIdList: string[], shopType: string): Promise<Shop[]> {

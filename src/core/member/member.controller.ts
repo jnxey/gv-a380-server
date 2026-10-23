@@ -216,7 +216,7 @@ export class MemberAdminController {
   }
 
   /**
-   * 为会员充值。流水记在当前选择的门店下。
+   * 为会员充值。流水固定记在 A380 中心门店，不跟当前业务门店走。
    */
   @Post('recharge')
   @RequirePermission(PermissionCode.MEMBER_RECHARGE)

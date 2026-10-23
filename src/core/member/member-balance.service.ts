@@ -10,9 +10,9 @@ import {
   BusinessNoPrefix,
 } from '../../common/constants';
 import { BusinessException } from '../../common/exceptions/business.exception';
-import { ShopContext } from '../../common/context/shop-context';
 import { createBusinessNo, isEmpty, isPositiveMoney, toIdentifier, toMoneyString } from '../../common/tools';
 import { FinanceBill } from '../finance/finance-bill.entity';
+import { ShopService } from '../shop/shop.service';
 import { MemberAccount } from './member-account.entity';
 
 /**
@@ -31,7 +31,7 @@ export interface BalanceChangeCommand {
 }
 
 /**
- * 后台充值命令。门店取当前已校验门店，不接收前端传入的 shopId。
+ * 后台充值命令。流水固定记在 A380 中心门店，不接收前端传入的 shopId。
  */
 export interface RechargeCommand {
   memberId: string;
@@ -73,25 +73,27 @@ export interface RefundBalanceCommand {
  */
 @Injectable()
 export class MemberBalanceService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly shopService: ShopService,
+  ) {}
 
   /**
-   * 后台充值。自己开启本地事务，增加余额并写入 RECHARGE 流水。
+   * 后台充值。自己开启本地事务，增加余额并写入 RECHARGE 流水。流水只记在 A380 中心门店。
    */
   async recharge(command: RechargeCommand): Promise<FinanceBill> {
     if (!isPositiveMoney(command.amount)) {
       throw new BusinessException('充值金额必须大于0');
     }
-    const currentShopId = ShopContext.getCurrentShopId();
-    if (isEmpty(currentShopId)) {
-      throw new BusinessException('请选择门店后再充值');
-    }
+    // 1. 充值不跟当前选中的业务门店走，统一落到 A380 中心
+    const a380Shop = await this.shopService.findEnabledA380Shop();
+    const a380ShopId = toIdentifier(a380Shop.id);
     const remark = isEmpty(command.remark) ? '会员充值' : command.remark;
     return this.dataSource.transaction(async (entityManager) => {
       return this.applyBalanceChange({
         entityManager,
         memberId: command.memberId,
-        shopId: currentShopId,
+        shopId: a380ShopId,
         amount: toMoneyString(command.amount),
         direction: FinanceDirection.IN,
         bizType: FinanceBizType.RECHARGE,

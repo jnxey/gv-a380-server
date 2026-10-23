@@ -4,6 +4,7 @@ import { FinanceModule } from '../finance/finance.module';
 import { FinanceBill } from '../finance/finance-bill.entity';
 import { AuthModule } from '../auth/auth.module';
 import { MerchantAuthModule } from '../../common/merchant-auth/merchant-auth.module';
+import { ShopModule } from '../shop/shop.module';
 import { ChatUserClient } from './chat-user.client';
 import { MemberAccount } from './member-account.entity';
 import { MemberAdminController, MemberAppController, MemberCommonController } from './member.controller';
@@ -19,6 +20,7 @@ import { MemberQueryService } from './member-query.service';
     TypeOrmModule.forFeature([MemberAccount, FinanceBill]),
     forwardRef(() => FinanceModule),
     MerchantAuthModule,
+    ShopModule,
   ],
   controllers: [MemberAdminController, MemberAppController, MemberCommonController],
   providers: [MemberBalanceService, MemberQueryService, ChatUserClient],
