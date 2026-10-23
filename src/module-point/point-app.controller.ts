@@ -4,6 +4,7 @@ import { PageQueryDto } from '../common/dto/page-query.dto';
 import { LoginAccountContext } from '../common/interfaces/login-account-context';
 import { FinanceDirection } from '../common/constants';
 import { isEmpty } from '../common/tools';
+import { ChatUserClient } from '../core/member/chat-user.client';
 import { MemberQueryService } from '../core/member/member-query.service';
 import { PointBizTypeLabel, PointLedgerDirection } from './point.constants';
 import { PointLedgerService } from './point-ledger.service';
@@ -11,13 +12,14 @@ import { PointLedgerService } from './point-ledger.service';
 class PointBillQueryDto extends PageQueryDto {}
 
 /**
- * 小程序积分明细。用会员资料里的联系方式当积分账号。
+ * 小程序积分明细。用聊天用户已绑定的 point_account 查积分账簿。
  */
 @Controller('app/point')
 export class PointAppController {
   constructor(
     private readonly pointLedgerService: PointLedgerService,
     private readonly memberQueryService: MemberQueryService,
+    private readonly chatUserClient: ChatUserClient,
   ) {}
 
   /**
@@ -64,14 +66,19 @@ export class PointAppController {
   }
 
   /**
-   * 用会员联系方式当积分账号。没有联系方式时返回空。
+   * 按会员用户名向聊天服务取 point_account。未绑定或查不到时返回空。
    */
   private async resolvePointsAccount(memberId: string): Promise<string> {
     const memberAccount = await this.memberQueryService.findById(memberId);
-    if (isEmpty(memberAccount)) {
+    if (isEmpty(memberAccount) || isEmpty(memberAccount.username)) {
       return '';
     }
-    return isEmpty(memberAccount.contact) ? '' : memberAccount.contact.trim();
+    try {
+      const chatUserProfile = await this.chatUserClient.findByKeyword(memberAccount.username);
+      return isEmpty(chatUserProfile.pointAccount) ? '' : chatUserProfile.pointAccount.trim();
+    } catch {
+      return '';
+    }
   }
 
   /**

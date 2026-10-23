@@ -32,6 +32,8 @@ export interface ChatUserProfile {
   avatar: string;
   signature: string;
   status: string;
+  /** 聊天用户已绑定的积分账号。未绑定时为空字符串。 */
+  pointAccount: string;
 }
 
 /**
@@ -125,6 +127,7 @@ export class ChatUserClient {
       avatar: this.readTextField(responseBody.avatar),
       signature: this.readTextField(responseBody.signature),
       status: this.readTextField(responseBody.status),
+      pointAccount: this.readTextField(responseBody.point_account),
     };
   }
 
