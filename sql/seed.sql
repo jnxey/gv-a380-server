@@ -2,8 +2,8 @@
 USE gv_a380;
 
 INSERT INTO shop (id, shop_code, shop_name, shop_type, address, contact_phone, status) VALUES
-(1, 'KTV01', 'KTV01店', 'KTV', '集团园区A座', '010-60000001', 'ENABLED'),
-(2, 'A380', 'A380中心', 'A380', '集团总部', '', 'ENABLED'),
+(1, 'A380', 'A380中心', 'A380', '集团总部', '', 'ENABLED'),
+(2, 'KTV01', 'KTV01店', 'KTV', '集团园区A座', '010-60000001', 'ENABLED'),
 (3, 'HOTEL01', 'HOTEL01店', 'HOTEL', '集团园区C座', '010-60000003', 'ENABLED'),
 (4, 'STORE01', 'STORE01店', 'STORE', '集团园区D座', '010-60000004', 'ENABLED');
 
@@ -164,8 +164,8 @@ INSERT INTO sys_role_menu (id, role_id, menu_id) VALUES
 INSERT INTO sys_user_shop (id, user_id, shop_id) VALUES
 (1, 1, 1),(2, 1, 2),(3, 1, 3),(12, 1, 4),
 (4, 2, 1),(5, 2, 2),(6, 2, 3),(13, 2, 4),
-(7, 3, 1),
-(9, 4, 1),
+(7, 3, 2),
+(9, 4, 2),
 (10, 5, 3),
 (11, 6, 3),
 (14, 7, 4),
@@ -175,13 +175,13 @@ INSERT INTO member_account (id, username, balance, status) VALUES
 (1, 'M3800001', 1000.00, 'ENABLED');
 
 INSERT INTO ktv_room_type (id, shop_id, type_name, hourly_price, status, sort_order) VALUES
-(1, 1, '小包', 200.00, 'ENABLED', 2),
-(2, 1, '中包', 400.00, 'ENABLED', 1),
-(3, 1, '大包', 600.00, 'ENABLED', 0);
+(1, 2, '小包', 200.00, 'ENABLED', 2),
+(2, 2, '中包', 400.00, 'ENABLED', 1),
+(3, 2, '大包', 600.00, 'ENABLED', 0);
 
 INSERT INTO ktv_room (id, shop_id, room_no, room_name, room_type_id, capacity, status, room_status, sort_order) VALUES
-(1, 1, 'A01', 'KTV01小包', 1, 4, 'ENABLED', 'IDLE', 1),
-(2, 1, 'A02', 'KTV01中包', 2, 8, 'ENABLED', 'IDLE', 0);
+(1, 2, 'A01', 'KTV01小包', 1, 4, 'ENABLED', 'IDLE', 1),
+(2, 2, 'A02', 'KTV01中包', 2, 8, 'ENABLED', 'IDLE', 0);
 
 INSERT INTO hotel_room_type (id, shop_id, type_name, price, status, sort_order) VALUES
 (1, 3, '大床房', 300.00, 'ENABLED', 1),
