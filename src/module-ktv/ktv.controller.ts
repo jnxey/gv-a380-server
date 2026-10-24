@@ -333,6 +333,16 @@ export class KtvAdminController {
   }
 
   /**
+   * 重排当前门店包厢类型的图片。第一张是封面。
+   */
+  @Post('room-types/:roomTypeId/images/sort')
+  @RequirePermission(PermissionCode.KTV_ROOM_TYPE_SAVE)
+  async sortRoomTypeImages(@Param('roomTypeId') roomTypeId: string, @Body() sortIdListDto: SortIdListDto) {
+    await this.ktvService.sortRoomTypeImages(roomTypeId, sortIdListDto.idList);
+    return null;
+  }
+
+  /**
    * 删除当前门店包厢类型的一张图片。
    */
   @Delete('room-types/:roomTypeId/images/:imageId')
