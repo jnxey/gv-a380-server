@@ -41,7 +41,7 @@ export class FinanceBillController {
   constructor(private readonly financeBillService: FinanceBillService) {}
 
   /**
-   * 按门店汇总收入和支出。关键字不参与汇总。
+   * 按门店汇总收入和支出。关键字与明细一致，限定到该会员。
    */
   @Get('summary')
   @RequirePermission(PermissionCode.FINANCE_BILL_QUERY)
@@ -52,6 +52,8 @@ export class FinanceBillController {
       financeBillQueryDto.bizType || '',
       financeBillQueryDto.startDate || '',
       financeBillQueryDto.endDate || '',
+      '',
+      financeBillQueryDto.keyword || '',
     );
   }
 

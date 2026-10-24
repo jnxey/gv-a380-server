@@ -142,6 +142,7 @@ export class FinanceBillService {
 
   /**
    * 按门店汇总收入和支出。没有流水的门店也返回，金额为 0.00。
+   * 传入关键字时与明细一样限定到该会员；没有会员账户时汇总全 0。
    */
   async summarizeBills(
     boundShopIdList: string[],
@@ -150,6 +151,7 @@ export class FinanceBillService {
     startDate: string,
     endDate: string,
     excludedBizType = '',
+    keyword = '',
   ): Promise<FinanceBillSummaryResult> {
     if (!isEmpty(bizType) && !isOneOf(bizType, Object.values(FinanceBizType))) {
       throw new BusinessException('流水类型不正确');
@@ -159,13 +161,27 @@ export class FinanceBillService {
     }
     const shopIdList = this.resolveBillShopIdList(boundShopIdList, shopId);
     const billTimeRange = this.resolveBillTimeRange(startDate, endDate);
-    // 1. 按门店和方向求和
+    // 1. 有关键字时按用户名、手机号或邮箱解析到会员。没有会员账户时汇总为 0
+    let memberIdFilter = '';
+    const cleanedKeyword = isEmpty(keyword) ? '' : keyword.trim();
+    if (isEmpty(cleanedKeyword) !== true) {
+      const chatUserProfile = await this.chatUserClient.findByKeyword(cleanedKeyword);
+      const memberAccount = await this.memberQueryService.findByUsername(chatUserProfile.username);
+      if (isEmpty(memberAccount)) {
+        return this.buildEmptySummary(shopIdList);
+      }
+      memberIdFilter = toIdentifier(memberAccount.id);
+    }
+    // 2. 按门店和方向求和
     const queryBuilder = this.financeBillRepository
       .createQueryBuilder('financeBill')
       .select('financeBill.shopId', 'shopId')
       .addSelect('financeBill.direction', 'direction')
       .addSelect('SUM(financeBill.amount)', 'totalAmount')
       .where('financeBill.shopId IN (:...shopIdList)', { shopIdList });
+    if (isEmpty(memberIdFilter) !== true) {
+      queryBuilder.andWhere('financeBill.memberId = :memberId', { memberId: memberIdFilter });
+    }
     if (isEmpty(bizType) !== true && bizType !== excludedBizType) {
       queryBuilder.andWhere('financeBill.bizType = :bizType', { bizType });
     }
@@ -177,7 +193,7 @@ export class FinanceBillService {
       queryBuilder.andWhere('financeBill.createdAt <= :endAt', { endAt: billTimeRange.endAt });
     }
     const rawRowList = await queryBuilder.groupBy('financeBill.shopId').addGroupBy('financeBill.direction').getRawMany();
-    // 2. 每个门店都留一行，并算出全部合计
+    // 3. 每个门店都留一行，并算出全部合计
     const amountByShopId = new Map<string, { inAmount: Decimal; outAmount: Decimal }>();
     for (const rawRow of rawRowList) {
       const rawShopId = toIdentifier(rawRow.shopId);
@@ -193,6 +209,23 @@ export class FinanceBillService {
       }
       amountByShopId.set(rawShopId, shopAmount);
     }
+    return this.buildSummaryResult(shopIdList, amountByShopId);
+  }
+
+  /**
+   * 没有会员账户时，各门店收入支出都返回 0.00。
+   */
+  private async buildEmptySummary(shopIdList: string[]): Promise<FinanceBillSummaryResult> {
+    return this.buildSummaryResult(shopIdList, new Map());
+  }
+
+  /**
+   * 按门店金额表组装汇总结果，并补上门店名称。
+   */
+  private async buildSummaryResult(
+    shopIdList: string[],
+    amountByShopId: Map<string, { inAmount: Decimal; outAmount: Decimal }>,
+  ): Promise<FinanceBillSummaryResult> {
     const shopList = await this.shopService.findByIdList(shopIdList);
     const shopNameByShopId = new Map<string, string>();
     for (const shop of shopList) {
