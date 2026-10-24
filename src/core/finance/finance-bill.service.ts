@@ -8,6 +8,7 @@ import { PageResult } from '../../common/interfaces/page-result';
 import { isEmpty, isOneOf, resolvePage, toIdentifier, toMoneyString } from '../../common/tools';
 import { ChatUserClient } from '../member/chat-user.client';
 import { MemberQueryService } from '../member/member-query.service';
+import { SysUser } from '../rbac/sys.entities';
 import { ShopService } from '../shop/shop.service';
 import { FinanceBill } from './finance-bill.entity';
 
@@ -41,6 +42,8 @@ export class FinanceBillService {
   constructor(
     @InjectRepository(FinanceBill)
     private readonly financeBillRepository: Repository<FinanceBill>,
+    @InjectRepository(SysUser)
+    private readonly sysUserRepository: Repository<SysUser>,
     @Inject(forwardRef(() => MemberQueryService))
     private readonly memberQueryService: MemberQueryService,
     @Inject(forwardRef(() => ChatUserClient))
@@ -110,7 +113,79 @@ export class FinanceBillService {
       skip: pageResult.skip,
       take: pageResult.pageSize,
     });
-    // 3. 补用户名和门店名。没有会员或门店时对应名称为空
+    // 3. 补用户名、门店名和操作人。没有会员、门店或操作人时对应名称为空
+    const list = await this.attachBillDisplayFields(billList);
+    return {
+      list,
+      total,
+      page: pageResult.page,
+      pageSize: pageResult.pageSize,
+    };
+  }
+
+  /**
+   * 按当前筛选条件列出财务流水，供导出。超过上限时直接失败。
+   */
+  async listBillsForExport(
+    boundShopIdList: string[],
+    shopId: string,
+    bizType: string,
+    keyword: string,
+    startDate: string,
+    endDate: string,
+    excludedBizType = '',
+  ): Promise<{ list: Array<FinanceBill & { username: string; shopName: string; operatorName: string }> }> {
+    if (!isEmpty(bizType) && !isOneOf(bizType, Object.values(FinanceBizType))) {
+      throw new BusinessException('流水类型不正确');
+    }
+    if (!isEmpty(excludedBizType) && !isOneOf(excludedBizType, Object.values(FinanceBizType))) {
+      throw new BusinessException('流水类型不正确');
+    }
+    const shopIdList = this.resolveBillShopIdList(boundShopIdList, shopId);
+    const billTimeRange = this.resolveBillTimeRange(startDate, endDate);
+    if (isEmpty(bizType) !== true && bizType === excludedBizType) {
+      return { list: [] };
+    }
+    const whereCondition: FindOptionsWhere<FinanceBill> = { shopId: In(shopIdList) };
+    if (isEmpty(bizType) !== true) {
+      whereCondition.bizType = bizType;
+    } else if (isEmpty(excludedBizType) !== true) {
+      whereCondition.bizType = Not(excludedBizType);
+    }
+    if (isEmpty(billTimeRange) !== true) {
+      whereCondition.createdAt = Between(billTimeRange.startAt, billTimeRange.endAt);
+    }
+    // 1. 有关键字时按用户名、手机号或邮箱解析到会员。没有会员账户时返回空列表
+    const cleanedKeyword = isEmpty(keyword) ? '' : keyword.trim();
+    if (isEmpty(cleanedKeyword) !== true) {
+      const chatUserProfile = await this.chatUserClient.findByKeyword(cleanedKeyword);
+      const memberAccount = await this.memberQueryService.findByUsername(chatUserProfile.username);
+      if (isEmpty(memberAccount)) {
+        return { list: [] };
+      }
+      whereCondition.memberId = toIdentifier(memberAccount.id);
+    }
+    // 2. 先数总数，超过导出上限就拒绝
+    const total = await this.financeBillRepository.count({ where: whereCondition });
+    if (total > PageSetting.FINANCE_BILL_EXPORT_MAX) {
+      throw new BusinessException(`导出不能超过 ${PageSetting.FINANCE_BILL_EXPORT_MAX} 条，请缩小时间范围或筛选条件`);
+    }
+    // 3. 查出全部符合条件的流水并补展示字段
+    const billList = await this.financeBillRepository.find({
+      where: whereCondition,
+      order: { id: 'DESC' },
+      take: PageSetting.FINANCE_BILL_EXPORT_MAX,
+    });
+    const list = await this.attachBillDisplayFields(billList);
+    return { list };
+  }
+
+  /**
+   * 给流水补用户名、门店名和操作人姓名。
+   */
+  private async attachBillDisplayFields(
+    billList: FinanceBill[],
+  ): Promise<Array<FinanceBill & { username: string; shopName: string; operatorName: string }>> {
     const memberIdList = billList.map((financeBill) => toIdentifier(financeBill.memberId));
     const memberAccountList = await this.memberQueryService.findByIdList(memberIdList);
     const usernameByMemberId = new Map<string, string>();
@@ -123,21 +198,35 @@ export class FinanceBillService {
     for (const shop of shopList) {
       shopNameByShopId.set(toIdentifier(shop.id), shop.shopName);
     }
-    const list = billList.map((financeBill) => {
+    // 1. 收集有操作人的账号，再查姓名；没有真实姓名时用登录名
+    const operatorIdList: string[] = [];
+    for (const financeBill of billList) {
+      if (isEmpty(financeBill.operatorId)) {
+        continue;
+      }
+      operatorIdList.push(toIdentifier(financeBill.operatorId));
+    }
+    const operatorNameById = new Map<string, string>();
+    if (isEmpty(operatorIdList) !== true) {
+      const operatorList = await this.sysUserRepository.find({
+        where: { id: In(operatorIdList) },
+      });
+      for (const operator of operatorList) {
+        const operatorName = isEmpty(operator.realName) ? operator.username : operator.realName;
+        operatorNameById.set(toIdentifier(operator.id), operatorName);
+      }
+    }
+    return billList.map((financeBill) => {
       const username = usernameByMemberId.get(toIdentifier(financeBill.memberId));
       const shopName = shopNameByShopId.get(toIdentifier(financeBill.shopId));
+      const operatorName = isEmpty(financeBill.operatorId) ? '' : operatorNameById.get(toIdentifier(financeBill.operatorId));
       return {
         ...financeBill,
         username: isEmpty(username) ? '' : username,
         shopName: isEmpty(shopName) ? '' : shopName,
+        operatorName: isEmpty(operatorName) ? '' : operatorName,
       };
     });
-    return {
-      list,
-      total,
-      page: pageResult.page,
-      pageSize: pageResult.pageSize,
-    };
   }
 
   /**

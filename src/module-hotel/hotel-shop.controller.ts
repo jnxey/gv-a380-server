@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { IsDefined, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { ArrayNotEmpty, IsArray, IsDefined, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ModuleCode, PermissionCode, RecordStatus, ShopImageLimit, ShopType } from '../common/constants';
 import { RequireModule, RequirePermission, RequiresShop } from '../common/decorators/auth.decorators';
@@ -9,7 +9,17 @@ import { LoginAccountContext } from '../common/interfaces/login-account-context'
 import { ShopService } from '../core/shop/shop.service';
 
 /**
- * 营业时间。结束必须晚于开始。
+ * 图片排序。按顺序写入，第一张是封面。
+ */
+export class HotelShopImageSortDto {
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsString({ each: true })
+  idList: string[];
+}
+
+/**
+ * 营业时间。结束早于开始表示跨到次日。
  */
 export class HotelShopBusinessHoursDto {
   @IsString()
@@ -121,6 +131,20 @@ export class HotelShopAdminController {
     @CurrentAccount() loginAccountContext: LoginAccountContext,
   ) {
     return this.shopService.addShopImage(shopId, ShopType.HOTEL, loginAccountContext.boundShopIdList, file);
+  }
+
+  /**
+   * 重排已绑定酒店门店的图片。第一张是封面。
+   */
+  @Post(':shopId/images/sort')
+  @RequirePermission(PermissionCode.HOTEL_SHOP_SAVE)
+  async sortImages(
+    @Param('shopId') shopId: string,
+    @Body() hotelShopImageSortDto: HotelShopImageSortDto,
+    @CurrentAccount() loginAccountContext: LoginAccountContext,
+  ) {
+    await this.shopService.sortShopImages(shopId, ShopType.HOTEL, loginAccountContext.boundShopIdList, hotelShopImageSortDto.idList);
+    return null;
   }
 
   /**

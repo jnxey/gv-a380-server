@@ -238,6 +238,24 @@ export class HotelAdminController {
   }
 
   /**
+   * 按当前筛选条件导出当前门店财务流水。不含会员充值。
+   */
+  @Get('bills/export')
+  @RequirePermission(PermissionCode.HOTEL_BILL_QUERY)
+  exportBills(@Query() hotelBillQueryDto: HotelBillQueryDto) {
+    const currentShopId = this.readCurrentShopId();
+    return this.financeBillService.listBillsForExport(
+      [currentShopId],
+      currentShopId,
+      hotelBillQueryDto.bizType || '',
+      hotelBillQueryDto.keyword || '',
+      hotelBillQueryDto.startDate || '',
+      hotelBillQueryDto.endDate || '',
+      FinanceBizType.RECHARGE,
+    );
+  }
+
+  /**
    * 分页查询当前门店财务流水。
    */
   @Get('bills')

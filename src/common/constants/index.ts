@@ -516,6 +516,8 @@ export const PageSetting = {
   DEFAULT_PAGE_SIZE: 10,
   MAX_PAGE_SIZE: 100,
   PAYMENT_NOTICE_SIZE: 20,
+  /** 财务流水一次最多导出这么多条。 */
+  FINANCE_BILL_EXPORT_MAX: 5000,
 } as const;
 
 /**

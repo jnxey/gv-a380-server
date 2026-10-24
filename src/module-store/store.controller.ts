@@ -254,6 +254,24 @@ export class StoreAdminController {
   }
 
   /**
+   * 按当前筛选条件导出当前门店财务流水。默认只看商铺销售，不含会员充值。
+   */
+  @Get('bills/export')
+  @RequirePermission(PermissionCode.STORE_BILL_QUERY)
+  exportBills(@Query() storeBillQueryDto: StoreBillQueryDto) {
+    const currentShopId = this.readCurrentShopId();
+    return this.financeBillService.listBillsForExport(
+      [currentShopId],
+      currentShopId,
+      storeBillQueryDto.bizType || FinanceBizType.STORE_SALE,
+      storeBillQueryDto.keyword || '',
+      storeBillQueryDto.startDate || '',
+      storeBillQueryDto.endDate || '',
+      FinanceBizType.RECHARGE,
+    );
+  }
+
+  /**
    * 分页查询当前门店财务流水。默认只看商铺销售。
    */
   @Get('bills')

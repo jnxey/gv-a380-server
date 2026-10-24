@@ -1160,20 +1160,31 @@ export class KtvService {
   }
 
   /**
-   * 到店钟点是否落在营业时间内。开始包含，结束不包含。没有营业时间时整天可约。
+   * 到店钟点是否落在营业时间内。开始包含，结束不包含。结束早于开始时按跨天算。没有营业时间时整天可约。
    */
   private isInsideBusinessHours(startTime: string, businessHours: Shop['businessHours']): boolean {
     if (isEmpty(businessHours) || isEmpty(businessHours.startTime) || isEmpty(businessHours.endTime)) {
       return true;
     }
     const clockText = startTime.slice(0, 5);
-    if (clockText < businessHours.startTime) {
-      return false;
+    // 1. 当天营业：落在 [开始, 结束)
+    if (businessHours.endTime > businessHours.startTime) {
+      if (clockText < businessHours.startTime) {
+        return false;
+      }
+      if (clockText >= businessHours.endTime) {
+        return false;
+      }
+      return true;
     }
-    if (clockText >= businessHours.endTime) {
-      return false;
+    // 2. 跨天营业：落在 [开始, 24:00) 或 [00:00, 结束)
+    if (clockText >= businessHours.startTime) {
+      return true;
     }
-    return true;
+    if (clockText < businessHours.endTime) {
+      return true;
+    }
+    return false;
   }
 
   /**

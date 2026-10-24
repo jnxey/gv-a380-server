@@ -260,6 +260,23 @@ export class KtvAdminController {
   }
 
   /**
+   * 按当前筛选条件导出当前门店财务流水。
+   */
+  @Get('bills/export')
+  @RequirePermission(PermissionCode.KTV_BILL_QUERY)
+  exportBills(@Query() ktvBillQueryDto: KtvBillQueryDto) {
+    const currentShopId = this.readCurrentShopId();
+    return this.financeBillService.listBillsForExport(
+      [currentShopId],
+      currentShopId,
+      ktvBillQueryDto.bizType || '',
+      ktvBillQueryDto.keyword || '',
+      ktvBillQueryDto.startDate || '',
+      ktvBillQueryDto.endDate || '',
+    );
+  }
+
+  /**
    * 分页查询当前门店财务流水。
    */
   @Get('bills')

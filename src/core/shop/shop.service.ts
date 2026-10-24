@@ -378,6 +378,38 @@ export class ShopService {
   }
 
   /**
+   * 按传入顺序重排门店图片。第一张是封面。必须正好是该门店现有全部图片。
+   */
+  async sortShopImages(shopId: string, shopType: string, boundShopIdList: string[], imageIdList: string[]): Promise<void> {
+    await this.findWritableShop(shopId, shopType, boundShopIdList);
+    const cleanedShopId = toIdentifier(shopId);
+    const cleanedIdList = imageIdList.map((imageId) => toIdentifier(imageId));
+    if (isEmpty(cleanedIdList)) {
+      throw new BusinessException('请选择图片');
+    }
+    const shopImageList = await this.shopImageRepository.find({
+      where: { shopId: cleanedShopId },
+      order: { sortOrder: 'ASC', id: 'ASC' },
+    });
+    if (shopImageList.length !== cleanedIdList.length) {
+      throw new BusinessException('图片列表已变化，请刷新后重试');
+    }
+    const shopImageById = new Map<string, ShopImage>();
+    for (const shopImage of shopImageList) {
+      shopImageById.set(toIdentifier(shopImage.id), shopImage);
+    }
+    for (const imageId of cleanedIdList) {
+      if (isEmpty(shopImageById.get(imageId))) {
+        throw new BusinessException('门店图片不存在');
+      }
+    }
+    // 1. 按新顺序写回 sortOrder，第一张作为封面
+    for (let sortOrder = 0; sortOrder < cleanedIdList.length; sortOrder += 1) {
+      await this.shopImageRepository.update({ id: cleanedIdList[sortOrder], shopId: cleanedShopId }, { sortOrder });
+    }
+  }
+
+  /**
    * 转成带图片列表的门店字段。
    */
   async toShopViewWithImages(shop: Shop): Promise<ReturnType<ShopService['toShopView']> & { imageList: ShopImageView[] }> {
@@ -486,7 +518,7 @@ export class ShopService {
   }
 
   /**
-   * 营业时间的开始和结束都必须有，且结束要晚于开始。
+   * 营业时间的开始和结束都必须有，且不能相同。结束早于开始表示跨到次日。
    */
   private normalizeBusinessHours(businessHours: { startTime?: string; endTime?: string } | null | undefined): ShopBusinessHours {
     const startTime = isEmpty(businessHours) || isEmpty(businessHours.startTime) ? '' : businessHours.startTime;
@@ -494,8 +526,8 @@ export class ShopService {
     if (isEmpty(startTime) || isEmpty(endTime)) {
       throw new BusinessException('请填写营业时间');
     }
-    if (endTime <= startTime) {
-      throw new BusinessException('结束时间必须晚于开始时间');
+    if (endTime === startTime) {
+      throw new BusinessException('结束时间不能与开始时间相同');
     }
     return {
       startTime,

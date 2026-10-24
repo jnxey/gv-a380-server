@@ -58,6 +58,22 @@ export class FinanceBillController {
   }
 
   /**
+   * 按当前筛选条件导出财务流水。不分页，有条数上限。
+   */
+  @Get('export')
+  @RequirePermission(PermissionCode.FINANCE_BILL_QUERY)
+  exportBills(@Query() financeBillQueryDto: FinanceBillQueryDto, @CurrentAccount() loginAccountContext: LoginAccountContext) {
+    return this.financeBillService.listBillsForExport(
+      loginAccountContext.boundShopIdList,
+      financeBillQueryDto.shopId || '',
+      financeBillQueryDto.bizType || '',
+      financeBillQueryDto.keyword || '',
+      financeBillQueryDto.startDate || '',
+      financeBillQueryDto.endDate || '',
+    );
+  }
+
+  /**
    * 分页查询已绑定门店的财务流水。
    */
   @Get()
