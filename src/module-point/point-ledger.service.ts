@@ -4,6 +4,7 @@ import Decimal from 'decimal.js';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import { BusinessException } from '../common/exceptions/business.exception';
 import { isEmpty, isNumber, isObject } from '../common/tools';
+import { SimOrm } from '../common/tools/sim-orm';
 import { PointBindEntity } from './entities/point-bind';
 import { PointDatabase, PointLedgerDirection, PointLedgerTable, PointMerchantResponse } from './point.constants';
 import { PointMonthTableTool } from './tools/point-month-table.tool';
@@ -74,19 +75,15 @@ export class PointLedgerService {
     if (command.direction !== PointLedgerDirection.INCREASE && command.direction !== PointLedgerDirection.DECREASE) {
       throw new BusinessException('记账方向不正确');
     }
-    if (isNumber(command.amount) !== true || command.amount <= 0) {
+    if (!isNumber(command.amount) || command.amount <= 0) {
       throw new BusinessException('记账金额必须大于0');
     }
-    return this.pointDataSource.transaction(async (entityManager) => {
-      await entityManager.query('SELECT GET_LOCK(?, 10) AS locked', [`lmwp_${cleanedAccount}`]);
-      try {
-        return await this.insertSingleRow(entityManager, {
-          ...command,
-          account: cleanedAccount,
-        });
-      } finally {
-        await entityManager.query('SELECT RELEASE_LOCK(?) AS released', [`lmwp_${cleanedAccount}`]);
-      }
+    return SimOrm.transaction(this.pointDataSource, async (entityManager, getLock) => {
+      await getLock(`lmwp_${cleanedAccount}`, 10);
+      return await this.insertSingleRow(entityManager, {
+        ...command,
+        account: cleanedAccount,
+      });
     });
   }
 

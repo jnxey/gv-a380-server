@@ -41,6 +41,7 @@ import {
   toIdentifier,
   toMoneyString,
 } from '../common/tools';
+import { SimOrm } from '../common/tools/sim-orm';
 import { MemberBalanceService } from '../core/member/member-balance.service';
 import { MemberQueryService } from '../core/member/member-query.service';
 import { NotifyService } from '../core/notify/notify.service';
@@ -391,7 +392,7 @@ export class HotelService {
     }
     const shopId = await this.requireEnabledHotelShop();
     const cleanedRemark = remark.trim();
-    await this.dataSource.transaction(async (entityManager) => {
+    await SimOrm.transaction(this.dataSource, async (entityManager) => {
       await this.memberBalanceService.deductBalance({
         entityManager,
         memberId,
@@ -481,7 +482,7 @@ export class HotelService {
     if (isEmpty(memberAccount) || memberAccount.username !== securityKeyUsername) {
       throw new BusinessException('安全密钥无效');
     }
-    return this.dataSource.transaction(async (entityManager) => {
+    return SimOrm.transaction(this.dataSource, async (entityManager) => {
       // 1. 校验酒店门店
       const shop = await this.shopService.findEnabledShopInManager(entityManager, command.shopId, ShopType.HOTEL);
       const shopId = toIdentifier(shop.id);
@@ -563,7 +564,7 @@ export class HotelService {
    * 办理入住。分配空闲房间，不扣房费。
    */
   async checkIn(bookingOrderId: string, roomId: string): Promise<void> {
-    await this.dataSource.transaction(async (entityManager) => {
+    await SimOrm.transaction(this.dataSource, async (entityManager) => {
       // 1. 锁定待入住订单
       const bookingOrder = await entityManager
         .getRepository(HotelBookingOrder)
@@ -630,7 +631,7 @@ export class HotelService {
     if (contactText.length > HotelWalkInContact.MAX_LENGTH) {
       throw new BusinessException('联系方式过长');
     }
-    await this.dataSource.transaction(async (entityManager) => {
+    await SimOrm.transaction(this.dataSource, async (entityManager) => {
       // 2. 锁定房间，必须空闲
       const hotelRoom = await entityManager
         .getRepository(HotelRoom)
@@ -692,7 +693,7 @@ export class HotelService {
    * 续住。只延长离店日期，不扣款。
    */
   async extendStay(bookingOrderId: string, checkOutDate: string): Promise<void> {
-    await this.dataSource.transaction(async (entityManager) => {
+    await SimOrm.transaction(this.dataSource, async (entityManager) => {
       const bookingOrder = await entityManager
         .getRepository(HotelBookingOrder)
         .createQueryBuilder('bookingOrder')
@@ -727,7 +728,7 @@ export class HotelService {
    * 退房。按实际入住晚数把房费记到订单上，不扣会员余额，房间改为打扫中。
    */
   async checkOut(bookingOrderId: string, operatorId: string): Promise<void> {
-    await this.dataSource.transaction(async (entityManager) => {
+    await SimOrm.transaction(this.dataSource, async (entityManager) => {
       // 1. 锁定在住订单和入住记录
       const bookingOrder = await entityManager
         .getRepository(HotelBookingOrder)
@@ -874,7 +875,7 @@ export class HotelService {
       seenIdSet.add(recordId);
     });
     // 3. 下标就是新的排序
-    await this.dataSource.transaction(async (entityManager) => {
+    await SimOrm.transaction(this.dataSource, async (entityManager) => {
       for (let sortOrder = 0; sortOrder < idList.length; sortOrder += 1) {
         await entityManager.update(entity, { id: idList[sortOrder] }, { sortOrder });
       }

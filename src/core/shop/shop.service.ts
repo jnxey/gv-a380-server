@@ -2,11 +2,12 @@ import { randomUUID } from 'crypto';
 import { mkdir, unlink, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, In, Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { RecordStatus, ShopImageLimit, ShopImageMime, ShopType, UploadSetting } from '../../common/constants';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { isDuplicateEntryError, isEmpty, toIdentifier } from '../../common/tools';
+import { SimOrm } from '../../common/tools/sim-orm';
 import { SysUserShop } from '../rbac/sys.entities';
 import { ShopImage } from './shop-image.entity';
 import { Shop, ShopAddressLocation, ShopBusinessHours } from './shop.entity';
@@ -50,6 +51,8 @@ export interface SaveShopCommand {
 @Injectable()
 export class ShopService {
   constructor(
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
     @InjectRepository(Shop)
     private readonly shopRepository: Repository<Shop>,
     @InjectRepository(SysUserShop)
@@ -177,7 +180,7 @@ export class ShopService {
     shop.contactPhone = isEmpty(command.contactPhone) ? '' : command.contactPhone;
     shop.status = command.status;
     try {
-      return await this.shopRepository.manager.transaction(async (entityManager) => {
+      return await SimOrm.transaction(this.dataSource, async (entityManager) => {
         const savedShop = await entityManager.getRepository(Shop).save(shop);
         const sysUserShop = new SysUserShop();
         sysUserShop.userId = command.operatorId;
@@ -231,7 +234,7 @@ export class ShopService {
     shop.contactPhone = isEmpty(command.contactPhone) ? '' : command.contactPhone;
     shop.status = command.status;
     try {
-      return await this.shopRepository.manager.transaction(async (entityManager) => {
+      return await SimOrm.transaction(this.dataSource, async (entityManager) => {
         const savedShop = await entityManager.getRepository(Shop).save(shop);
         const sysUserShop = new SysUserShop();
         sysUserShop.userId = command.operatorId;
@@ -285,7 +288,7 @@ export class ShopService {
     shop.contactPhone = isEmpty(command.contactPhone) ? '' : command.contactPhone;
     shop.status = command.status;
     try {
-      return await this.shopRepository.manager.transaction(async (entityManager) => {
+      return await SimOrm.transaction(this.dataSource, async (entityManager) => {
         const savedShop = await entityManager.getRepository(Shop).save(shop);
         const sysUserShop = new SysUserShop();
         sysUserShop.userId = command.operatorId;

@@ -11,6 +11,7 @@ import {
 } from '../../common/constants';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { createBusinessNo, isEmpty, isPositiveMoney, toIdentifier, toMoneyString } from '../../common/tools';
+import { SimOrm } from '../../common/tools/sim-orm';
 import { FinanceBill } from '../finance/finance-bill.entity';
 import { ShopService } from '../shop/shop.service';
 import { MemberAccount } from './member-account.entity';
@@ -89,7 +90,7 @@ export class MemberBalanceService {
     const a380Shop = await this.shopService.findEnabledA380Shop();
     const a380ShopId = toIdentifier(a380Shop.id);
     const remark = isEmpty(command.remark) ? '会员充值' : command.remark;
-    return this.dataSource.transaction(async (entityManager) => {
+    return SimOrm.transaction(this.dataSource, async (entityManager) => {
       return this.applyBalanceChange({
         entityManager,
         memberId: command.memberId,

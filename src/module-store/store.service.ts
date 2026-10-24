@@ -21,6 +21,7 @@ import { MiniappSignService } from '../common/crypto/miniapp-sign.service';
 import { BusinessException } from '../common/exceptions/business.exception';
 import { PageResult } from '../common/interfaces/page-result';
 import { createBusinessNo, isEmpty, isNumber, isOneOf, isPositiveMoney, resolvePage, toIdentifier, toMoneyString } from '../common/tools';
+import { SimOrm } from '../common/tools/sim-orm';
 import { ChatUserClient } from '../core/member/chat-user.client';
 import { MemberBalanceService } from '../core/member/member-balance.service';
 import { MemberQueryService } from '../core/member/member-query.service';
@@ -357,7 +358,7 @@ export class StoreService {
       seenIdSet.add(categoryId);
     });
     // 3. 下标就是新的排序
-    await this.dataSource.transaction(async (entityManager) => {
+    await SimOrm.transaction(this.dataSource, async (entityManager) => {
       for (let sortOrder = 0; sortOrder < idList.length; sortOrder += 1) {
         await entityManager.update(StoreProductCategory, { id: idList[sortOrder], shopId }, { sortOrder });
       }
@@ -476,7 +477,7 @@ export class StoreService {
     // 2. 取出这些商品原来的排序值，按从小到大排好
     const sortOrderList = productList.map((storeProduct) => storeProduct.sortOrder).sort((left, right) => left - right);
     // 3. 按拖动后的顺序把排序值写回去
-    await this.dataSource.transaction(async (entityManager) => {
+    await SimOrm.transaction(this.dataSource, async (entityManager) => {
       for (let index = 0; index < idList.length; index += 1) {
         await entityManager.update(StoreProduct, { id: idList[index], shopId }, { sortOrder: sortOrderList[index] });
       }
@@ -598,7 +599,7 @@ export class StoreService {
   async createPurchase(itemList: StorePurchaseLineCommand[], remark: string, operatorId: string): Promise<StorePurchaseView> {
     const shopId = await this.requireEnabledStoreShop();
     const cleanedItemList = this.normalizePurchaseItemList(itemList);
-    return this.dataSource.transaction(async (entityManager) => {
+    return SimOrm.transaction(this.dataSource, async (entityManager) => {
       // 1. 锁住商品行，确认都属于当前门店
       const productIdList = cleanedItemList.map((purchaseLine) => toIdentifier(purchaseLine.productId));
       const productList = await entityManager
@@ -736,7 +737,7 @@ export class StoreService {
   }): Promise<StoreSaleView> {
     const cleanedItemList = this.normalizeSaleItemList(command.itemList);
     void command.securityKeyUsername;
-    return this.dataSource.transaction(async (entityManager) => {
+    return SimOrm.transaction(this.dataSource, async (entityManager) => {
       // 1. 锁住商品，确认可售且库存够
       const productIdList = cleanedItemList.map((saleLine) => toIdentifier(saleLine.productId));
       const productList = await entityManager

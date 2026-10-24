@@ -6,6 +6,7 @@ import { MenuRoot, PasswordHash, RecordStatus, RoleCode, SuperAdminKeep } from '
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { LoginAccountContext } from '../../common/interfaces/login-account-context';
 import { isEmpty, toIdentifier } from '../../common/tools';
+import { SimOrm } from '../../common/tools/sim-orm';
 import { Shop } from '../shop/shop.entity';
 import {
   SysMenu,
@@ -150,7 +151,7 @@ export class SystemAdminService {
     const shopIdList = await this.assertShopIdList(createSystemUserDto.shopIdList);
     // 2. 写入账号、唯一角色和门店绑定
     const passwordHash = await bcrypt.hash(createSystemUserDto.password, PasswordHash.SALT_ROUNDS);
-    const savedUser = await this.dataSource.transaction(async (entityManager) => {
+    const savedUser = await SimOrm.transaction(this.dataSource, async (entityManager) => {
       const sysUser = await entityManager.save(SysUser, {
         username: createSystemUserDto.username,
         passwordHash,
@@ -194,7 +195,7 @@ export class SystemAdminService {
     await this.assertRoleExists(updateSystemUserDto.roleId);
     const shopIdList = await this.assertShopIdList(updateSystemUserDto.shopIdList);
     // 2. 更新资料，并替换角色和门店绑定
-    await this.dataSource.transaction(async (entityManager) => {
+    await SimOrm.transaction(this.dataSource, async (entityManager) => {
       await entityManager.update(SysUser, sysUser.id, {
         realName: updateSystemUserDto.realName,
         mobile: isEmpty(updateSystemUserDto.mobile) ? '' : updateSystemUserDto.mobile,
@@ -288,7 +289,7 @@ export class SystemAdminService {
       this.assertSuperAdminKeep(permissionIdList, expandedMenuIdList, permissionList, menuList);
     }
     // 3. 替换该角色原来的权限和菜单
-    await this.dataSource.transaction(async (entityManager) => {
+    await SimOrm.transaction(this.dataSource, async (entityManager) => {
       await entityManager.delete(SysRolePermission, { roleId: sysRole.id });
       if (!isEmpty(permissionIdList)) {
         const rolePermissionList = permissionIdList.map((permissionId) => ({

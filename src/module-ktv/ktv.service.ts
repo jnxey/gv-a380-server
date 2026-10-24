@@ -33,6 +33,7 @@ import { MiniappSignService } from '../common/crypto/miniapp-sign.service';
 import { BusinessException } from '../common/exceptions/business.exception';
 import { PageResult } from '../common/interfaces/page-result';
 import { createBusinessNo, createVerifyCode, isDuplicateEntryError, isEmpty, isNumber, isOneOf, isPositiveMoney, resolvePage, toIdentifier, toMoneyString } from '../common/tools';
+import { SimOrm } from '../common/tools/sim-orm';
 import { MemberBalanceService } from '../core/member/member-balance.service';
 import { ChatUserClient } from '../core/member/chat-user.client';
 import { MemberQueryService } from '../core/member/member-query.service';
@@ -490,7 +491,7 @@ export class KtvService {
     }
     const shopId = await this.requireEnabledKtvShop();
     const cleanedRemark = remark.trim();
-    await this.dataSource.transaction(async (entityManager) => {
+    await SimOrm.transaction(this.dataSource, async (entityManager) => {
       await this.memberBalanceService.deductBalance({
         entityManager,
         memberId,
@@ -536,7 +537,7 @@ export class KtvService {
     await this.shopService.findEnabledShopByCode(shopCode);
     const paidAmount = toMoneyString(amount);
     // 5. 事务内再次确认门店仍启用，再扣余额
-    const paidShop = await this.dataSource.transaction(async (entityManager) => {
+    const paidShop = await SimOrm.transaction(this.dataSource, async (entityManager) => {
       const shop = await this.shopService.findEnabledShopByCodeInManager(entityManager, shopCode);
       await this.memberBalanceService.deductBalance({
         entityManager,
@@ -624,7 +625,7 @@ export class KtvService {
     if (isEmpty(memberAccount) || memberAccount.username !== securityKeyUsername) {
       throw new BusinessException('安全密钥无效');
     }
-    return this.dataSource.transaction(async (entityManager) => {
+    return SimOrm.transaction(this.dataSource, async (entityManager) => {
       // 1. 校验门店真实存在且为启用中的 KTV，不以请求里的门店文本直接落库
       const shop = await this.shopService.findEnabledShopInManager(entityManager, command.shopId, ShopType.KTV);
       const shopId = toIdentifier(shop.id);
@@ -775,7 +776,7 @@ export class KtvService {
    * 到店核销并分配空闲包厢。分不到包厢时订单保持待核销。
    */
   async verifyBooking(bookingOrderId: string, roomId: string): Promise<void> {
-    await this.dataSource.transaction(async (entityManager) => {
+    await SimOrm.transaction(this.dataSource, async (entityManager) => {
       // 1. 锁定待核销订单
       const bookingOrder = await entityManager
         .getRepository(KtvBookingOrder)
@@ -878,7 +879,7 @@ export class KtvService {
     if (!isPositiveMoney(amount)) {
       throw new BusinessException('消费金额必须大于0');
     }
-    return this.dataSource.transaction(async (entityManager) => {
+    return SimOrm.transaction(this.dataSource, async (entityManager) => {
       // 1. 锁定已核销的预订单，避免重复或越店消费
       const bookingOrder = await entityManager
         .getRepository(KtvBookingOrder)
@@ -921,7 +922,7 @@ export class KtvService {
    * 取消已支付且未完成的预订，并通过 core 退回包厢费。
    */
   async cancelBooking(bookingOrderId: string, operatorId: string): Promise<void> {
-    await this.dataSource.transaction(async (entityManager) => {
+    await SimOrm.transaction(this.dataSource, async (entityManager) => {
       // 1. 锁定订单并确认还能退
       const bookingOrder = await entityManager
         .getRepository(KtvBookingOrder)
@@ -1019,7 +1020,7 @@ export class KtvService {
       seenIdSet.add(recordId);
     });
     // 3. 下标就是新的排序
-    await this.dataSource.transaction(async (entityManager) => {
+    await SimOrm.transaction(this.dataSource, async (entityManager) => {
       for (let sortOrder = 0; sortOrder < idList.length; sortOrder += 1) {
         await entityManager.update(entity, { id: idList[sortOrder] }, { sortOrder });
       }
