@@ -95,6 +95,8 @@ export interface HotelRoomTypeView {
   typeName: string;
   price: string;
   status: string;
+  /** 挂在该房型下的房间数量。 */
+  roomCount: number;
   imageList: HotelRoomTypeImageView[];
 }
 
@@ -264,6 +266,38 @@ export class HotelService {
       }
     }
     await this.hotelRoomTypeImageRepository.delete({ id: roomTypeImage.id });
+  }
+
+  /**
+   * 按传入顺序重排房型图片。第一张是封面。必须正好是该房型现有全部图片。
+   */
+  async sortRoomTypeImages(roomTypeId: string, imageIdList: string[]): Promise<void> {
+    await this.requireRoomType(roomTypeId);
+    const roomTypeIdValue = toIdentifier(roomTypeId);
+    const cleanedIdList = imageIdList.map((imageId) => toIdentifier(imageId));
+    if (isEmpty(cleanedIdList)) {
+      throw new BusinessException('请选择图片');
+    }
+    const roomTypeImageList = await this.hotelRoomTypeImageRepository.find({
+      where: { roomTypeId: roomTypeIdValue },
+      order: { sortOrder: 'ASC', id: 'ASC' },
+    });
+    if (roomTypeImageList.length !== cleanedIdList.length) {
+      throw new BusinessException('图片列表已变化，请刷新后重试');
+    }
+    const roomTypeImageById = new Map<string, HotelRoomTypeImage>();
+    for (const roomTypeImage of roomTypeImageList) {
+      roomTypeImageById.set(toIdentifier(roomTypeImage.id), roomTypeImage);
+    }
+    for (const imageId of cleanedIdList) {
+      if (isEmpty(roomTypeImageById.get(imageId))) {
+        throw new BusinessException('房型图片不存在');
+      }
+    }
+    // 1. 按新顺序写回 sortOrder，第一张作为封面
+    for (let sortOrder = 0; sortOrder < cleanedIdList.length; sortOrder += 1) {
+      await this.hotelRoomTypeImageRepository.update({ id: cleanedIdList[sortOrder], roomTypeId: roomTypeIdValue }, { sortOrder });
+    }
   }
 
   /**
@@ -885,19 +919,20 @@ export class HotelService {
   /**
    * 转成带图片列表的房型字段。
    */
-  private toRoomTypeView(roomType: HotelRoomType, imageList: HotelRoomTypeImageView[]): HotelRoomTypeView {
+  private toRoomTypeView(roomType: HotelRoomType, imageList: HotelRoomTypeImageView[], roomCount = 0): HotelRoomTypeView {
     return {
       id: toIdentifier(roomType.id),
       shopId: toIdentifier(roomType.shopId),
       typeName: roomType.typeName,
       price: roomType.price,
       status: roomType.status,
+      roomCount,
       imageList,
     };
   }
 
   /**
-   * 批量转成带图片列表的房型字段。
+   * 批量转成带图片列表和关联房间数的房型字段。
    */
   private async toRoomTypeViewList(roomTypeList: HotelRoomType[]): Promise<HotelRoomTypeView[]> {
     const roomTypeIdList = roomTypeList.map((roomType) => toIdentifier(roomType.id));
@@ -905,12 +940,27 @@ export class HotelService {
       where: { roomTypeId: In(roomTypeIdList) },
       order: { sortOrder: 'ASC', id: 'ASC' },
     });
+    // 1. 按房型统计挂了多少间房
+    const roomCountByTypeId = new Map<string, number>();
+    if (isEmpty(roomTypeIdList) !== true) {
+      const roomCountRowList = await this.hotelRoomRepository
+        .createQueryBuilder('hotelRoom')
+        .select('hotelRoom.roomTypeId', 'roomTypeId')
+        .addSelect('COUNT(1)', 'roomCount')
+        .where('hotelRoom.roomTypeId IN (:...roomTypeIdList)', { roomTypeIdList })
+        .groupBy('hotelRoom.roomTypeId')
+        .getRawMany<{ roomTypeId: string; roomCount: string | number }>();
+      for (const roomCountRow of roomCountRowList) {
+        roomCountByTypeId.set(toIdentifier(roomCountRow.roomTypeId), Number(roomCountRow.roomCount));
+      }
+    }
     return roomTypeList.map((roomType) => {
       const roomTypeId = toIdentifier(roomType.id);
       const roomTypeImageList = imageList
         .filter((roomTypeImage) => toIdentifier(roomTypeImage.roomTypeId) === roomTypeId)
         .map((roomTypeImage) => this.toImageView(roomTypeImage));
-      return this.toRoomTypeView(roomType, roomTypeImageList);
+      const roomCount = roomCountByTypeId.get(roomTypeId);
+      return this.toRoomTypeView(roomType, roomTypeImageList, isEmpty(roomCount) ? 0 : roomCount);
     });
   }
 

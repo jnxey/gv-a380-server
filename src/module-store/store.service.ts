@@ -111,6 +111,8 @@ export interface StoreProductCategoryView {
   categoryName: string;
   sortOrder: number;
   status: string;
+  /** 挂在该分类下的商品数量。 */
+  productCount: number;
 }
 
 export interface StoreProductView {
@@ -260,7 +262,7 @@ export class StoreService {
   }
 
   /**
-   * 查询当前门店全部商品分类。
+   * 查询当前门店全部商品分类，并带上每个分类下的商品数。
    */
   async listProductCategories(): Promise<StoreProductCategoryView[]> {
     const shopId = await this.requireEnabledStoreShop();
@@ -268,7 +270,25 @@ export class StoreService {
       where: { shopId },
       order: { sortOrder: 'ASC', id: 'ASC' },
     });
-    return categoryList.map((categoryRow) => this.toProductCategoryView(categoryRow));
+    const categoryIdList = categoryList.map((categoryRow) => toIdentifier(categoryRow.id));
+    const productCountByCategoryId = new Map<string, number>();
+    if (isEmpty(categoryIdList) !== true) {
+      const productCountRowList = await this.storeProductRepository
+        .createQueryBuilder('storeProduct')
+        .select('storeProduct.categoryId', 'categoryId')
+        .addSelect('COUNT(1)', 'productCount')
+        .where('storeProduct.shopId = :shopId', { shopId })
+        .andWhere('storeProduct.categoryId IN (:...categoryIdList)', { categoryIdList })
+        .groupBy('storeProduct.categoryId')
+        .getRawMany<{ categoryId: string; productCount: string | number }>();
+      for (const productCountRow of productCountRowList) {
+        productCountByCategoryId.set(toIdentifier(productCountRow.categoryId), Number(productCountRow.productCount));
+      }
+    }
+    return categoryList.map((categoryRow) => {
+      const productCount = productCountByCategoryId.get(toIdentifier(categoryRow.id));
+      return this.toProductCategoryView(categoryRow, isEmpty(productCount) ? 0 : productCount);
+    });
   }
 
   /**
@@ -978,13 +998,14 @@ export class StoreService {
   /**
    * 转成前端使用的分类字段。
    */
-  private toProductCategoryView(categoryRow: StoreProductCategory): StoreProductCategoryView {
+  private toProductCategoryView(categoryRow: StoreProductCategory, productCount = 0): StoreProductCategoryView {
     return {
       categoryId: toIdentifier(categoryRow.id),
       shopId: toIdentifier(categoryRow.shopId),
       categoryName: categoryRow.categoryName,
       sortOrder: categoryRow.sortOrder,
       status: categoryRow.status,
+      productCount,
     };
   }
 
