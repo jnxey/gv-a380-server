@@ -9,6 +9,7 @@ import {
   RecordStatus,
   BusinessNoPrefix,
 } from '../../common/constants';
+import { ShopContext } from '../../common/context/shop-context';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { createBusinessNo, isEmpty, isPositiveMoney, toIdentifier, toMoneyString } from '../../common/tools';
 import { SimOrm } from '../../common/tools/sim-orm';
@@ -90,17 +91,20 @@ export class MemberBalanceService {
     const a380Shop = await this.shopService.findEnabledA380Shop();
     const a380ShopId = toIdentifier(a380Shop.id);
     const remark = isEmpty(command.remark) ? '会员充值' : command.remark;
-    return SimOrm.transaction(this.dataSource, async (entityManager) => {
-      return this.applyBalanceChange({
-        entityManager,
-        memberId: command.memberId,
-        shopId: a380ShopId,
-        amount: toMoneyString(command.amount),
-        direction: FinanceDirection.IN,
-        bizType: FinanceBizType.RECHARGE,
-        bizOrderNo: '',
-        operatorId: command.operatorId,
-        remark,
+    // 2. 切到 A380 门店上下文再写流水，避免门店隔离把中心门店流水当成跨店写入拒绝
+    return ShopContext.run(a380ShopId, () => {
+      return SimOrm.transaction(this.dataSource, async (entityManager) => {
+        return this.applyBalanceChange({
+          entityManager,
+          memberId: command.memberId,
+          shopId: a380ShopId,
+          amount: toMoneyString(command.amount),
+          direction: FinanceDirection.IN,
+          bizType: FinanceBizType.RECHARGE,
+          bizOrderNo: '',
+          operatorId: command.operatorId,
+          remark,
+        });
       });
     });
   }
