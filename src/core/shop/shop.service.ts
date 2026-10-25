@@ -145,6 +145,16 @@ export class ShopService {
   }
 
   /**
+   * 小程序按门店类型列出启用和休息的门店。
+   */
+  async listByType(shopType: string): Promise<Shop[]> {
+    return this.shopRepository.find({
+      where: { shopType },
+      order: { id: 'ASC' },
+    });
+  }
+
+  /**
    * 取唯一的启用中 A380 中心门店。充值流水固定记在这里。
    */
   async findEnabledA380Shop(): Promise<Shop> {

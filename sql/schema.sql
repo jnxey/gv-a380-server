@@ -518,6 +518,8 @@ CREATE TABLE store_sale (
   operator_id BIGINT UNSIGNED NULL COMMENT '操作人后台账号ID',
   remark VARCHAR(128) NOT NULL DEFAULT '' COMMENT '备注',
   delivery_address VARCHAR(255) NOT NULL DEFAULT '' COMMENT '收货地址',
+  receiver_name VARCHAR(64) NOT NULL DEFAULT '' COMMENT '收货人',
+  contact VARCHAR(64) NOT NULL DEFAULT '' COMMENT '联系方式',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (id),
   UNIQUE KEY uk_store_sale_no (sale_no),

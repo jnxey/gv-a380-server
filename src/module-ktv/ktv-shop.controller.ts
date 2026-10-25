@@ -223,11 +223,11 @@ export class ShopAppController {
   ) {}
 
   /**
-   * 按门店类型列出启用门店。
+   * 按门店类型列出启用和休息的门店。
    */
   @Get()
   async listShops(@Query() appShopQueryDto: AppShopQueryDto) {
-    const shopList = await this.shopService.listEnabledByType(appShopQueryDto.shopType);
+    const shopList = await this.shopService.listByType(appShopQueryDto.shopType);
     return this.shopService.toShopViewList(shopList);
   }
 

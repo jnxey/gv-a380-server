@@ -9,6 +9,7 @@ import {
   BusinessNoPrefix,
   DetailDescriptionLimit,
   FinanceBizType,
+  HotelWalkInContact,
   RecordStatus,
   ShopImageLimit,
   ShopImageMime,
@@ -85,6 +86,8 @@ export interface CreateStoreSaleCommand {
 export interface CreateAppStoreSaleCommand {
   shopId: string;
   cipherText: string;
+  receiverName: string;
+  contact: string;
   deliveryAddress: string;
   itemList: StoreSaleLineCommand[];
 }
@@ -164,6 +167,8 @@ export interface StoreSaleView {
   saleStatus: string;
   amount: string;
   remark: string;
+  receiverName: string;
+  contact: string;
   deliveryAddress: string;
   createdAt: string;
   itemList: Array<{
@@ -722,6 +727,8 @@ export class StoreService {
       payMethod: command.payMethod,
       memberId: isEmpty(command.memberId) ? null : toIdentifier(command.memberId),
       remark: command.remark,
+      receiverName: '',
+      contact: '',
       deliveryAddress: '',
       itemList: command.itemList,
       operatorId: command.operatorId,
@@ -735,7 +742,21 @@ export class StoreService {
   async createAppSale(memberId: string, command: CreateAppStoreSaleCommand): Promise<StoreSaleView> {
     const enabledShop = await this.shopService.findEnabledShop(command.shopId, ShopType.STORE);
     const shopId = toIdentifier(enabledShop.id);
+    const receiverName = isEmpty(command.receiverName) ? '' : command.receiverName.trim();
+    const contact = isEmpty(command.contact) ? '' : command.contact.trim();
     const deliveryAddress = isEmpty(command.deliveryAddress) ? '' : command.deliveryAddress.trim();
+    if (isEmpty(receiverName)) {
+      throw new BusinessException('请填写收货人');
+    }
+    if (isEmpty(contact)) {
+      throw new BusinessException('请填写联系方式');
+    }
+    if (receiverName.length > HotelWalkInContact.MAX_LENGTH) {
+      throw new BusinessException('收货人过长');
+    }
+    if (contact.length > HotelWalkInContact.MAX_LENGTH) {
+      throw new BusinessException('联系方式过长');
+    }
     if (isEmpty(deliveryAddress)) {
       throw new BusinessException('请填写收货地址');
     }
@@ -749,6 +770,8 @@ export class StoreService {
       payMethod: StorePayMethod.MEMBER,
       memberId: toIdentifier(memberId),
       remark: '小程序购买',
+      receiverName,
+      contact,
       deliveryAddress,
       itemList: command.itemList,
       operatorId: null,
@@ -764,6 +787,8 @@ export class StoreService {
     payMethod: string;
     memberId: string | null;
     remark: string;
+    receiverName: string;
+    contact: string;
     deliveryAddress: string;
     itemList: StoreSaleLineCommand[];
     operatorId: string | null;
@@ -821,6 +846,8 @@ export class StoreService {
       storeSale.amount = toMoneyString(saleAmount);
       storeSale.operatorId = command.operatorId;
       storeSale.remark = isEmpty(command.remark) ? '' : command.remark.trim();
+      storeSale.receiverName = isEmpty(command.receiverName) ? '' : command.receiverName.trim();
+      storeSale.contact = isEmpty(command.contact) ? '' : command.contact.trim();
       storeSale.deliveryAddress = isEmpty(command.deliveryAddress) ? '' : command.deliveryAddress.trim();
       const savedSale = await entityManager.getRepository(StoreSale).save(storeSale);
       for (const saleItem of saleItemList) {
@@ -1172,6 +1199,8 @@ export class StoreService {
         saleStatus: sale.saleStatus,
         amount: sale.amount,
         remark: isEmpty(sale.remark) ? '' : sale.remark,
+        receiverName: isEmpty(sale.receiverName) ? '' : sale.receiverName,
+        contact: isEmpty(sale.contact) ? '' : sale.contact,
         deliveryAddress: isEmpty(sale.deliveryAddress) ? '' : sale.deliveryAddress,
         createdAt: sale.createdAt,
         itemList: itemList.map((saleItem) => ({

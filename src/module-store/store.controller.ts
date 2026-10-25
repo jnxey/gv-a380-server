@@ -13,7 +13,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { DetailDescriptionLimit, FinanceBizType, ModuleCode, PermissionCode, RecordStatus, ShopImageLimit, StorePayMethod } from '../common/constants';
+import { DetailDescriptionLimit, FinanceBizType, HotelWalkInContact, ModuleCode, PermissionCode, RecordStatus, ShopImageLimit, StorePayMethod } from '../common/constants';
 import { ShopContext } from '../common/context/shop-context';
 import { CurrentAccount } from '../common/decorators/current-account.decorator';
 import { RequireModule, RequirePermission, RequiresShop } from '../common/decorators/auth.decorators';
@@ -217,6 +217,16 @@ export class CreateAppStoreSaleDto {
   @IsString()
   @IsNotEmpty()
   cipherText: string;
+
+  @IsString()
+  @IsNotEmpty({ message: '请填写收货人' })
+  @MaxLength(HotelWalkInContact.MAX_LENGTH, { message: '收货人过长' })
+  receiverName: string;
+
+  @IsString()
+  @IsNotEmpty({ message: '请填写联系方式' })
+  @MaxLength(HotelWalkInContact.MAX_LENGTH, { message: '联系方式过长' })
+  contact: string;
 
   @IsString()
   @IsNotEmpty()
