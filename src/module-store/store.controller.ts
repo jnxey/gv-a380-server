@@ -513,4 +513,12 @@ export class StoreAppController {
   createSale(@Body() createAppStoreSaleDto: CreateAppStoreSaleDto, @CurrentAccount() loginAccountContext: LoginAccountContext) {
     return this.storeService.createAppSale(loginAccountContext.accountId, createAppStoreSaleDto);
   }
+
+  /**
+   * 查询我的商铺销售单。
+   */
+  @Get('sales')
+  pageSales(@Query() pageQueryDto: PageQueryDto, @CurrentAccount() loginAccountContext: LoginAccountContext) {
+    return this.storeService.pageMemberSales(loginAccountContext.accountId, pageQueryDto.page, pageQueryDto.pageSize);
+  }
 }

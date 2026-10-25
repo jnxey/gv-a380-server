@@ -154,6 +154,26 @@ CREATE TABLE member_account (
   UNIQUE KEY uk_member_account_username (username)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='A380余额账户';
 
+CREATE TABLE shop_review (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  shop_id BIGINT UNSIGNED NOT NULL COMMENT '门店ID',
+  shop_type VARCHAR(16) NOT NULL COMMENT '门店类型：KTV、HOTEL、STORE',
+  member_id BIGINT UNSIGNED NOT NULL COMMENT '会员ID',
+  biz_type VARCHAR(32) NOT NULL COMMENT '业务类型：KTV_BOOKING、HOTEL_BOOKING、STORE_SALE',
+  biz_order_id BIGINT UNSIGNED NOT NULL COMMENT '业务单据ID',
+  biz_order_no VARCHAR(64) NOT NULL COMMENT '业务单号',
+  star_rating INT UNSIGNED NOT NULL COMMENT '星级 1-5',
+  content VARCHAR(500) NOT NULL DEFAULT '' COMMENT '评价文字',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_shop_review_biz (biz_type, biz_order_id),
+  KEY idx_shop_review_shop_id (shop_id, id),
+  KEY idx_shop_review_member_id (member_id),
+  CONSTRAINT fk_shop_review_shop FOREIGN KEY (shop_id) REFERENCES shop (id),
+  CONSTRAINT fk_shop_review_member FOREIGN KEY (member_id) REFERENCES member_account (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='门店评价';
+
 CREATE TABLE member_point_log (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
   member_id BIGINT UNSIGNED NOT NULL COMMENT '会员ID',

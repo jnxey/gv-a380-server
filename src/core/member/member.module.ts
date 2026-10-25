@@ -20,7 +20,7 @@ import { MemberQueryService } from './member-query.service';
     TypeOrmModule.forFeature([MemberAccount, FinanceBill]),
     forwardRef(() => FinanceModule),
     MerchantAuthModule,
-    ShopModule,
+    forwardRef(() => ShopModule),
   ],
   controllers: [MemberAdminController, MemberAppController, MemberCommonController],
   providers: [MemberBalanceService, MemberQueryService, ChatUserClient],

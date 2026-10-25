@@ -672,6 +672,25 @@ export class StoreService {
   }
 
   /**
+   * 会员分页查询自己的销售单。
+   */
+  async pageMemberSales(memberId: string, pageValue: unknown, pageSizeValue: unknown): Promise<PageResult<StoreSaleView>> {
+    const pageSetting = resolvePage(pageValue, pageSizeValue);
+    const [saleList, total] = await this.storeSaleRepository.findAndCount({
+      where: { memberId: toIdentifier(memberId) },
+      order: { id: 'DESC' },
+      skip: pageSetting.skip,
+      take: pageSetting.pageSize,
+    });
+    return {
+      list: await this.toSaleViewList(saleList),
+      total,
+      page: pageSetting.page,
+      pageSize: pageSetting.pageSize,
+    };
+  }
+
+  /**
    * 后台收银台创建销售单。会员余额会扣款，现金只记单。
    */
   async createAdminSale(command: CreateStoreSaleCommand): Promise<StoreSaleView> {
@@ -812,7 +831,12 @@ export class StoreService {
           remark: isEmpty(savedSale.remark) ? '商铺销售' : savedSale.remark,
         });
       }
-      savedSale.saleStatus = StoreSaleStatus.COMPLETED;
+      // 有会员时进入待评价，无会员直接已完成
+      if (isEmpty(command.memberId)) {
+        savedSale.saleStatus = StoreSaleStatus.COMPLETED;
+      } else {
+        savedSale.saleStatus = StoreSaleStatus.PENDING_REVIEW;
+      }
       await entityManager.getRepository(StoreSale).save(savedSale);
       return (await this.toSaleViewList([savedSale], entityManager))[0];
     });

@@ -783,7 +783,12 @@ export class HotelService {
       if (!isPositiveMoney(bookingOrder.amount)) {
         bookingOrder.amount = roomFeeText;
       }
-      bookingOrder.orderStatus = HotelOrderStatus.CHECKED_OUT;
+      // 有会员时进入待评价，无会员直接已退房
+      if (isEmpty(bookingOrder.memberId)) {
+        bookingOrder.orderStatus = HotelOrderStatus.CHECKED_OUT;
+      } else {
+        bookingOrder.orderStatus = HotelOrderStatus.PENDING_REVIEW;
+      }
       bookingOrder.checkOutDate = checkOutDateText;
       await entityManager.getRepository(HotelBookingOrder).save(bookingOrder);
       stayRecord.stayStatus = HotelStayStatus.CHECKED_OUT;

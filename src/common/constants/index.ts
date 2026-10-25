@@ -116,10 +116,11 @@ export const StorePayMethod = {
 
 /**
  * 商铺销售单状态。
- * PENDING_PAY：已扣库存、尚未完成收款；收款成功后进入 COMPLETED。
+ * PENDING_PAY：已扣库存、尚未完成收款；有会员收款成功后进入 PENDING_REVIEW，无会员进入 COMPLETED。
  */
 export const StoreSaleStatus = {
   PENDING_PAY: 'PENDING_PAY',
+  PENDING_REVIEW: 'PENDING_REVIEW',
   COMPLETED: 'COMPLETED',
   CANCELLED: 'CANCELLED',
   REFUNDED: 'REFUNDED',
@@ -151,11 +152,13 @@ export const FinanceDirection = {
 /**
  * KTV 预订订单状态。
  * PENDING_PAY：已占时段、尚未支付；支付成功后进入 PENDING_VERIFY。
+ * 包厢离开使用中后进入 PENDING_REVIEW，会员评价后进入 COMPLETED。
  */
 export const KtvOrderStatus = {
   PENDING_PAY: 'PENDING_PAY',
   PENDING_VERIFY: 'PENDING_VERIFY',
   VERIFIED: 'VERIFIED',
+  PENDING_REVIEW: 'PENDING_REVIEW',
   COMPLETED: 'COMPLETED',
   CANCELLED: 'CANCELLED',
   REFUNDED: 'REFUNDED',
@@ -168,7 +171,7 @@ export const KtvBookingActiveStatusList = [
   KtvOrderStatus.PENDING_PAY,
   KtvOrderStatus.PENDING_VERIFY,
   KtvOrderStatus.VERIFIED,
-  KtvOrderStatus.COMPLETED,
+  KtvOrderStatus.PENDING_REVIEW,
 ];
 
 /**
@@ -232,14 +235,34 @@ export const KtvConsumeStatus = {
 /**
  * 酒店预订订单状态。
  * PENDING_PAY：已下单、尚未支付；支付成功后进入 BOOKED。
+ * 有会员退房进入 PENDING_REVIEW，评价后或无会员退房进入 CHECKED_OUT。
  */
 export const HotelOrderStatus = {
   PENDING_PAY: 'PENDING_PAY',
   BOOKED: 'BOOKED',
   CHECKED_IN: 'CHECKED_IN',
+  PENDING_REVIEW: 'PENDING_REVIEW',
   CHECKED_OUT: 'CHECKED_OUT',
   CANCELLED: 'CANCELLED',
   REFUNDED: 'REFUNDED',
+} as const;
+
+/**
+ * 门店评价关联的业务单据类型。
+ */
+export const ShopReviewBizType = {
+  KTV_BOOKING: 'KTV_BOOKING',
+  HOTEL_BOOKING: 'HOTEL_BOOKING',
+  STORE_SALE: 'STORE_SALE',
+} as const;
+
+/**
+ * 门店评价星级与文字上限。
+ */
+export const ShopReviewLimit = {
+  STAR_MIN: 1,
+  STAR_MAX: 5,
+  CONTENT_MAX_LENGTH: 500,
 } as const;
 
 /**
@@ -349,6 +372,7 @@ export const PermissionCode = {
   KTV_ORDER_CANCEL: 'ktv:order:cancel',
   KTV_BILL_QUERY: 'ktv:bill:query',
   KTV_DEDUCT: 'ktv:deduct',
+  KTV_REVIEW_QUERY: 'ktv:review:query',
   HOTEL_SHOP_QUERY: 'hotel:shop:query',
   HOTEL_SHOP_SAVE: 'hotel:shop:save',
   HOTEL_ROOM_TYPE_QUERY: 'hotel:room-type:query',
@@ -362,6 +386,7 @@ export const PermissionCode = {
   HOTEL_ORDER_CANCEL: 'hotel:order:cancel',
   HOTEL_BILL_QUERY: 'hotel:bill:query',
   HOTEL_DEDUCT: 'hotel:deduct',
+  HOTEL_REVIEW_QUERY: 'hotel:review:query',
   STORE_SHOP_QUERY: 'store:shop:query',
   STORE_SHOP_SAVE: 'store:shop:save',
   STORE_CATEGORY_QUERY: 'store:category:query',
@@ -374,6 +399,7 @@ export const PermissionCode = {
   STORE_SALE_CASH: 'store:sale:cash',
   STORE_SALE_MEMBER: 'store:sale:member',
   STORE_BILL_QUERY: 'store:bill:query',
+  STORE_REVIEW_QUERY: 'store:review:query',
   SYSTEM_USER_QUERY: 'system:user:query',
   SYSTEM_USER_SAVE: 'system:user:save',
   SYSTEM_ROLE_QUERY: 'system:role:query',

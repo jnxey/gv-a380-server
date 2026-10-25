@@ -377,36 +377,68 @@ export class KtvService {
 
   /**
    * 手动切换包厢运营状态。使用中只允许从空闲开包厢写入，并记下结束时间。
+   * 离开使用中时，同房已核销订单改为待评价。
    */
   async updateRoomStatus(roomId: string, roomStatus: string, durationHours?: number): Promise<void> {
     if (!isOneOf(roomStatus, Object.values(KtvRoomStatus))) {
       throw new BusinessException('包厢状态不正确');
     }
-    const ktvRoom = await this.ktvRoomRepository.findOne({ where: { id: roomId } });
-    if (isEmpty(ktvRoom)) {
-      throw new BusinessException('包厢不存在');
-    }
-    if (roomStatus === KtvRoomStatus.IN_USE && ktvRoom.roomStatus !== KtvRoomStatus.IDLE) {
-      throw new BusinessException('只有空闲包厢可以开包厢');
-    }
-    // 1. 开成使用中必须选列表里的演唱小时，结束时间从现在起算
-    if (roomStatus === KtvRoomStatus.IN_USE) {
-      const durationHourCount = Number(durationHours);
-      const durationHourMatched = KtvOccupyDuration.HOUR_LIST.some((hourCount) => hourCount === durationHourCount);
-      if (!isNumber(durationHours) || !Number.isInteger(durationHourCount) || !durationHourMatched) {
-        throw new BusinessException(`请选择${KtvOccupyDuration.HOUR_LIST.join('、')}小时`);
+    await SimOrm.transaction(this.dataSource, async (entityManager) => {
+      const ktvRoom = await entityManager
+        .getRepository(KtvRoom)
+        .createQueryBuilder('ktvRoom')
+        .setLock('pessimistic_write')
+        .where('ktvRoom.id = :roomId', { roomId })
+        .getOne();
+      if (isEmpty(ktvRoom)) {
+        throw new BusinessException('包厢不存在');
       }
-      const endAt = new Date();
-      endAt.setHours(endAt.getHours() + durationHourCount);
-      ktvRoom.occupyEndAt = this.formatDateTime(endAt);
-      ktvRoom.occupyExtendHours = 0;
-    } else {
-      // 2. 离开使用中后不再提醒到点，累计延长也清掉
-      ktvRoom.occupyEndAt = null;
-      ktvRoom.occupyExtendHours = 0;
+      if (roomStatus === KtvRoomStatus.IN_USE && ktvRoom.roomStatus !== KtvRoomStatus.IDLE) {
+        throw new BusinessException('只有空闲包厢可以开包厢');
+      }
+      const wasInUse = ktvRoom.roomStatus === KtvRoomStatus.IN_USE;
+      // 1. 开成使用中必须选列表里的演唱小时，结束时间从现在起算
+      if (roomStatus === KtvRoomStatus.IN_USE) {
+        const durationHourCount = Number(durationHours);
+        const durationHourMatched = KtvOccupyDuration.HOUR_LIST.some((hourCount) => hourCount === durationHourCount);
+        if (!isNumber(durationHours) || !Number.isInteger(durationHourCount) || !durationHourMatched) {
+          throw new BusinessException(`请选择${KtvOccupyDuration.HOUR_LIST.join('、')}小时`);
+        }
+        const endAt = new Date();
+        endAt.setHours(endAt.getHours() + durationHourCount);
+        ktvRoom.occupyEndAt = this.formatDateTime(endAt);
+        ktvRoom.occupyExtendHours = 0;
+      } else {
+        // 2. 离开使用中后不再提醒到点，累计延长也清掉
+        ktvRoom.occupyEndAt = null;
+        ktvRoom.occupyExtendHours = 0;
+      }
+      ktvRoom.roomStatus = roomStatus;
+      await entityManager.getRepository(KtvRoom).save(ktvRoom);
+      // 3. 从使用中离开时，把该包厢已核销预订改成待评价
+      if (wasInUse === true && roomStatus !== KtvRoomStatus.IN_USE) {
+        await this.markVerifiedBookingPendingReview(entityManager, toIdentifier(ktvRoom.id));
+      }
+    });
+  }
+
+  /**
+   * 包厢结束使用后，把同房最新一笔已核销订单改成待评价。
+   */
+  private async markVerifiedBookingPendingReview(entityManager: EntityManager, roomId: string): Promise<void> {
+    const bookingOrder = await entityManager
+      .getRepository(KtvBookingOrder)
+      .createQueryBuilder('bookingOrder')
+      .setLock('pessimistic_write')
+      .where('bookingOrder.roomId = :roomId', { roomId })
+      .andWhere('bookingOrder.orderStatus = :orderStatus', { orderStatus: KtvOrderStatus.VERIFIED })
+      .orderBy('bookingOrder.id', 'DESC')
+      .getOne();
+    if (isEmpty(bookingOrder)) {
+      return;
     }
-    ktvRoom.roomStatus = roomStatus;
-    await this.ktvRoomRepository.save(ktvRoom);
+    bookingOrder.orderStatus = KtvOrderStatus.PENDING_REVIEW;
+    await entityManager.getRepository(KtvBookingOrder).save(bookingOrder);
   }
 
   /**

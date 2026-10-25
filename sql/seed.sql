@@ -78,6 +78,9 @@ INSERT INTO sys_permission (id, permission_code, permission_name, module_code, m
 (42, 'store:bill:query', '商铺财务流水查询', 'STORE', 66),
 (43, 'store:category:query', '商铺商品分类查询', 'STORE', 67),
 (44, 'store:category:save', '商铺商品分类保存', 'STORE', 67),
+(45, 'ktv:review:query', 'KTV评价查询', 'KTV', 37),
+(46, 'hotel:review:query', '酒店评价查询', 'HOTEL', 46),
+(47, 'store:review:query', '商铺评价查询', 'STORE', 68),
 (21, 'system:user:query', '账号查询', 'CORE', 51),
 (22, 'system:user:save', '账号保存', 'CORE', 51),
 (23, 'system:role:query', '角色查询', 'CORE', 52),
@@ -107,7 +110,10 @@ INSERT INTO sys_role_permission (id, role_id, permission_id) VALUES
 (107, 1, 43),(108, 1, 44),
 (93, 7, 33),(94, 7, 34),(95, 7, 35),(96, 7, 36),(97, 7, 37),(98, 7, 38),(99, 7, 39),(100, 7, 40),(101, 7, 41),(102, 7, 42),
 (109, 7, 43),(110, 7, 44),
-(103, 8, 35),(104, 8, 39),(105, 8, 40),(106, 8, 41),(111, 8, 43);
+(103, 8, 35),(104, 8, 39),(105, 8, 40),(106, 8, 41),(111, 8, 43),
+(112, 1, 45),(113, 3, 45),(114, 4, 45),
+(115, 1, 46),(116, 5, 46),(117, 6, 46),
+(118, 1, 47),(119, 7, 47),(120, 8, 47);
 
 INSERT INTO sys_menu (id, parent_id, menu_name, menu_path, component_path, permission_code, module_code, sort_order) VALUES
 (1, 0, 'A380中心', '/member', '', '', 'CORE', 10),
@@ -124,12 +130,14 @@ INSERT INTO sys_menu (id, parent_id, menu_name, menu_path, component_path, permi
 (35, 3, '包厢状态', '/ktv/room-status', 'ktv/room-status', 'ktv:room:query', 'KTV', 34),
 (33, 3, '订单管理', '/ktv/verify', 'ktv/verify', 'ktv:order:query', 'KTV', 35),
 (36, 3, '财务流水', '/ktv/bill', 'ktv/bill', 'ktv:bill:query', 'KTV', 36),
+(37, 3, '评价管理', '/ktv/review', 'ktv/review', 'ktv:review:query', 'KTV', 37),
 (40, 4, '门店管理', '/hotel/shop', 'hotel/shop', 'hotel:shop:query', 'HOTEL', 40),
 (41, 4, '房型管理', '/hotel/room-type', 'hotel/room-type', 'hotel:room-type:query', 'HOTEL', 41),
 (42, 4, '房间管理', '/hotel/room', 'hotel/room', 'hotel:room:query', 'HOTEL', 42),
 (44, 4, '房间状态', '/hotel/room-status', 'hotel/room-status', 'hotel:room:query', 'HOTEL', 43),
 (43, 4, '订单管理', '/hotel/order', 'hotel/order', 'hotel:order:query', 'HOTEL', 44),
 (45, 4, '财务流水', '/hotel/bill', 'hotel/bill', 'hotel:bill:query', 'HOTEL', 45),
+(46, 4, '评价管理', '/hotel/review', 'hotel/review', 'hotel:review:query', 'HOTEL', 46),
 (6, 0, '商铺业务', '/store', '', '', 'STORE', 45),
 (61, 6, '门店管理', '/store/shop', 'store/shop', 'store:shop:query', 'STORE', 61),
 (67, 6, '商品分类', '/store/category', 'store/category', 'store:category:query', 'STORE', 615),
@@ -138,6 +146,7 @@ INSERT INTO sys_menu (id, parent_id, menu_name, menu_path, component_path, permi
 (64, 6, '收银台', '/store/cashier', 'store/cashier', 'store:sale:query', 'STORE', 64),
 (65, 6, '销售单', '/store/sale', 'store/sale', 'store:sale:query', 'STORE', 65),
 (66, 6, '财务流水', '/store/bill', 'store/bill', 'store:bill:query', 'STORE', 66),
+(68, 6, '评价管理', '/store/review', 'store/review', 'store:review:query', 'STORE', 68),
 (5, 0, '系统管理', '/system', '', '', 'CORE', 50),
 (51, 5, '账号管理', '/system/user', 'system/user', 'system:user:query', 'CORE', 51),
 (52, 5, '角色权限', '/system/role', 'system/role', 'system:role:query', 'CORE', 52);
@@ -150,16 +159,18 @@ INSERT INTO sys_role_menu (id, role_id, menu_id) VALUES
 (19, 3, 3),(20, 3, 31),(21, 3, 32),(39, 3, 35),(22, 3, 33),(37, 3, 34),
 (23, 4, 3),(24, 4, 33),(42, 4, 36),
 (40, 1, 36),(41, 3, 36),
+(72, 1, 37),(73, 3, 37),(74, 4, 37),
 (25, 5, 4),(26, 5, 41),(27, 5, 42),(28, 5, 43),
 (45, 1, 44),(46, 5, 44),(47, 6, 44),
 (48, 1, 45),(49, 5, 45),(50, 6, 45),
+(75, 1, 46),(76, 5, 46),(77, 6, 46),
 (29, 6, 4),(30, 6, 43),
 (31, 1, 5),(32, 1, 51),(33, 1, 52),
 (34, 1, 40),
 (35, 5, 40),
-(51, 1, 6),(52, 1, 61),(69, 1, 67),(53, 1, 62),(54, 1, 63),(55, 1, 64),(56, 1, 65),(57, 1, 66),
-(58, 7, 6),(59, 7, 61),(70, 7, 67),(60, 7, 62),(61, 7, 63),(62, 7, 64),(63, 7, 65),(64, 7, 66),
-(65, 8, 6),(71, 8, 67),(66, 8, 62),(67, 8, 64),(68, 8, 65);
+(51, 1, 6),(52, 1, 61),(69, 1, 67),(53, 1, 62),(54, 1, 63),(55, 1, 64),(56, 1, 65),(57, 1, 66),(78, 1, 68),
+(58, 7, 6),(59, 7, 61),(70, 7, 67),(60, 7, 62),(61, 7, 63),(62, 7, 64),(63, 7, 65),(64, 7, 66),(79, 7, 68),
+(65, 8, 6),(71, 8, 67),(66, 8, 62),(67, 8, 64),(68, 8, 65),(80, 8, 68);
 
 INSERT INTO sys_user_shop (id, user_id, shop_id) VALUES
 (1, 1, 1),(2, 1, 2),(3, 1, 3),(12, 1, 4),

@@ -12,6 +12,7 @@ import {
   SysUserShop,
 } from '../../core/rbac/sys.entities';
 import { ShopImage } from '../../core/shop/shop-image.entity';
+import { ShopReview } from '../../core/shop/shop-review.entity';
 import { Shop } from '../../core/shop/shop.entity';
 import {
   HotelBookingOrder,
@@ -52,6 +53,7 @@ export const MainDatabaseEntities = [
   SysUserShop,
   Shop,
   ShopImage,
+  ShopReview,
   MemberAccount,
   FinanceBill,
   NotifyMessage,
