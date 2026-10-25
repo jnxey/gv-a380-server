@@ -46,6 +46,16 @@ export class SortIdListDto {
 }
 
 /**
+ * 商品详细描述。
+ */
+export class StoreProductDescriptionDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(DetailDescriptionLimit.MAX_LENGTH)
+  content?: string;
+}
+
+/**
  * 保存商品。
  */
 export class SaveStoreProductDto {
@@ -58,9 +68,9 @@ export class SaveStoreProductDto {
   productName: string;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(DetailDescriptionLimit.MAX_LENGTH)
-  description?: string;
+  @ValidateNested()
+  @Type(() => StoreProductDescriptionDto)
+  description?: StoreProductDescriptionDto;
 
   @IsString()
   @IsNotEmpty()
@@ -363,7 +373,7 @@ export class StoreAdminController {
     return this.storeService.createProduct({
       categoryId: saveStoreProductDto.categoryId,
       productName: saveStoreProductDto.productName,
-      description: saveStoreProductDto.description || '',
+      description: saveStoreProductDto.description,
       barcode: saveStoreProductDto.barcode,
       salePrice: saveStoreProductDto.salePrice,
       costPrice: saveStoreProductDto.costPrice,
@@ -390,7 +400,7 @@ export class StoreAdminController {
     return this.storeService.updateProduct(productId, {
       categoryId: saveStoreProductDto.categoryId,
       productName: saveStoreProductDto.productName,
-      description: saveStoreProductDto.description || '',
+      description: saveStoreProductDto.description,
       barcode: saveStoreProductDto.barcode,
       salePrice: saveStoreProductDto.salePrice,
       costPrice: saveStoreProductDto.costPrice,

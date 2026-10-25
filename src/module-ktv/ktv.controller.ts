@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, ForbiddenException, Get, Param, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Type } from 'class-transformer';
-import { ArrayNotEmpty, IsArray, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
+import { ArrayNotEmpty, IsArray, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 import { DetailDescriptionLimit, HotelWalkInContact, KtvBookingHour, KtvOccupyDuration, KtvOrderStatus, KtvPendingVerifyWindow, KtvRoomStatus, ModuleCode, PermissionCode, RecordStatus, ShopImageLimit } from '../common/constants';
 import { PageQueryDto } from '../common/dto/page-query.dto';
 import { CurrentAccount } from '../common/decorators/current-account.decorator';
@@ -13,6 +13,26 @@ import { FinanceBillService } from '../core/finance/finance-bill.service';
 import { KtvService } from './ktv.service';
 
 /**
+ * 包厢类型描述。预定简述、退订规则、预订须知。
+ */
+export class KtvRoomTypeDescriptionDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(DetailDescriptionLimit.MAX_LENGTH)
+  bookingSummary?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(DetailDescriptionLimit.MAX_LENGTH)
+  cancelRule?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(DetailDescriptionLimit.MAX_LENGTH)
+  bookingNotice?: string;
+}
+
+/**
  * 后台保存包厢类型。
  */
 export class SaveKtvRoomTypeDto {
@@ -21,9 +41,9 @@ export class SaveKtvRoomTypeDto {
   typeName: string;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(DetailDescriptionLimit.MAX_LENGTH)
-  description?: string;
+  @ValidateNested()
+  @Type(() => KtvRoomTypeDescriptionDto)
+  description?: KtvRoomTypeDescriptionDto;
 
   @IsNotEmpty()
   hourlyPrice: string | number;

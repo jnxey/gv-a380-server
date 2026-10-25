@@ -2,6 +2,19 @@ import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateCol
 import { decimalTransformer } from '../common/tools/column';
 
 /**
+ * 房型描述。床型、大小、楼层、人数、早餐、免费停车、预订须知。
+ */
+export interface HotelRoomTypeDescription {
+  bedType: string;
+  roomSize: string;
+  floorText: string;
+  guestCount: string;
+  breakfast: string;
+  freeParking: string;
+  bookingNotice: string;
+}
+
+/**
  * 酒店房型。
  */
 @Entity('hotel_room_type')
@@ -15,8 +28,8 @@ export class HotelRoomType {
   @Column({ type: 'varchar', length: 64 })
   typeName: string;
 
-  @Column({ type: 'varchar', length: 500, default: '' })
-  description: string;
+  @Column({ type: 'json' })
+  description: HotelRoomTypeDescription;
 
   @Column({ type: 'decimal', precision: 12, scale: 2, transformer: decimalTransformer })
   price: string;

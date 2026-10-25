@@ -43,7 +43,7 @@ import { MemberQueryService } from '../core/member/member-query.service';
 import { NotifyService } from '../core/notify/notify.service';
 import { Shop } from '../core/shop/shop.entity';
 import { ShopService } from '../core/shop/shop.service';
-import { KtvBookingOrder, KtvConsumeOrder, KtvRoom, KtvRoomType, KtvRoomTypeImage } from './ktv.entities';
+import { KtvBookingOrder, KtvConsumeOrder, KtvRoom, KtvRoomType, KtvRoomTypeDescription, KtvRoomTypeImage } from './ktv.entities';
 
 /**
  * 小程序创建 KTV 预订的入参。只选包厢类型，具体包厢到店再分配。
@@ -64,7 +64,7 @@ export interface CreateKtvBookingCommand {
  */
 export interface SaveKtvRoomTypeCommand {
   typeName: string;
-  description?: string;
+  description?: Partial<KtvRoomTypeDescription>;
   hourlyPrice: string | number;
   status: string;
 }
@@ -93,7 +93,7 @@ export interface KtvRoomTypeView {
   id: string;
   shopId: string;
   typeName: string;
-  description: string;
+  description: KtvRoomTypeDescription;
   hourlyPrice: string;
   status: string;
   /** 挂在该类型下的包厢数量。 */
@@ -994,10 +994,7 @@ export class KtvService {
     if (isEmpty(command.typeName)) {
       throw new BusinessException('包厢类型名称不能为空');
     }
-    const descriptionText = isEmpty(command.description) ? '' : command.description.trim();
-    if (descriptionText.length > DetailDescriptionLimit.MAX_LENGTH) {
-      throw new BusinessException(`详细描述不能超过${DetailDescriptionLimit.MAX_LENGTH}字`);
-    }
+    this.normalizeRoomTypeDescription(command.description);
     if (!isPositiveMoney(command.hourlyPrice)) {
       throw new BusinessException('每小时价格必须大于0');
     }
@@ -1067,11 +1064,30 @@ export class KtvService {
   }
 
   /**
+   * 整理包厢描述。缺省为空串，超长直接拒绝。
+   */
+  private normalizeRoomTypeDescription(description: Partial<KtvRoomTypeDescription> | null | undefined): KtvRoomTypeDescription {
+    const bookingSummary = isEmpty(description) || isEmpty(description.bookingSummary) ? '' : description.bookingSummary.trim();
+    const cancelRule = isEmpty(description) || isEmpty(description.cancelRule) ? '' : description.cancelRule.trim();
+    const bookingNotice = isEmpty(description) || isEmpty(description.bookingNotice) ? '' : description.bookingNotice.trim();
+    if (bookingSummary.length > DetailDescriptionLimit.MAX_LENGTH) {
+      throw new BusinessException(`预定简述不能超过${DetailDescriptionLimit.MAX_LENGTH}字`);
+    }
+    if (cancelRule.length > DetailDescriptionLimit.MAX_LENGTH) {
+      throw new BusinessException(`退订规则不能超过${DetailDescriptionLimit.MAX_LENGTH}字`);
+    }
+    if (bookingNotice.length > DetailDescriptionLimit.MAX_LENGTH) {
+      throw new BusinessException(`预订须知不能超过${DetailDescriptionLimit.MAX_LENGTH}字`);
+    }
+    return { bookingSummary, cancelRule, bookingNotice };
+  }
+
+  /**
    * 把保存参数写进包厢类型。
    */
   private fillRoomType(ktvRoomType: KtvRoomType, command: SaveKtvRoomTypeCommand): void {
     ktvRoomType.typeName = command.typeName;
-    ktvRoomType.description = isEmpty(command.description) ? '' : command.description.trim();
+    ktvRoomType.description = this.normalizeRoomTypeDescription(command.description);
     ktvRoomType.hourlyPrice = toMoneyString(command.hourlyPrice);
     ktvRoomType.status = command.status;
   }
@@ -1110,7 +1126,7 @@ export class KtvService {
       id: toIdentifier(roomType.id),
       shopId: toIdentifier(roomType.shopId),
       typeName: roomType.typeName,
-      description: isEmpty(roomType.description) ? '' : roomType.description,
+      description: this.normalizeRoomTypeDescription(roomType.description),
       hourlyPrice: roomType.hourlyPrice,
       status: roomType.status,
       roomCount,

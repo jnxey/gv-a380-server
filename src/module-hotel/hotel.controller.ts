@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, ForbiddenException, Get, Param, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ArrayNotEmpty, IsArray, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+import { ArrayNotEmpty, IsArray, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 import { DetailDescriptionLimit, FinanceBizType, HotelRoomStatus, HotelWalkInContact, HotelWalkInNight, ModuleCode, PermissionCode, RecordStatus, ShopImageLimit } from '../common/constants';
 import { PageQueryDto } from '../common/dto/page-query.dto';
 import { CurrentAccount } from '../common/decorators/current-account.decorator';
@@ -12,6 +13,46 @@ import { FinanceBillService } from '../core/finance/finance-bill.service';
 import { HotelService } from './hotel.service';
 
 /**
+ * 房型描述。床型、大小、楼层、人数、早餐、免费停车、预订须知。
+ */
+export class HotelRoomTypeDescriptionDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(DetailDescriptionLimit.SHORT_MAX_LENGTH)
+  bedType?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(DetailDescriptionLimit.SHORT_MAX_LENGTH)
+  roomSize?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(DetailDescriptionLimit.SHORT_MAX_LENGTH)
+  floorText?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(DetailDescriptionLimit.SHORT_MAX_LENGTH)
+  guestCount?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(DetailDescriptionLimit.SHORT_MAX_LENGTH)
+  breakfast?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(DetailDescriptionLimit.SHORT_MAX_LENGTH)
+  freeParking?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(DetailDescriptionLimit.MAX_LENGTH)
+  bookingNotice?: string;
+}
+
+/**
  * 保存房型。
  */
 export class SaveHotelRoomTypeDto {
@@ -20,9 +61,9 @@ export class SaveHotelRoomTypeDto {
   typeName: string;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(DetailDescriptionLimit.MAX_LENGTH)
-  description?: string;
+  @ValidateNested()
+  @Type(() => HotelRoomTypeDescriptionDto)
+  description?: HotelRoomTypeDescriptionDto;
 
   @IsNotEmpty()
   price: string | number;

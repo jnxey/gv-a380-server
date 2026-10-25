@@ -44,7 +44,7 @@ export interface SaveStoreProductCategoryCommand {
 export interface SaveStoreProductCommand {
   categoryId: string;
   productName: string;
-  description?: string;
+  description?: { content?: string };
   barcode: string;
   salePrice: string | number;
   costPrice: string | number;
@@ -125,7 +125,7 @@ export interface StoreProductView {
   categoryId: string;
   categoryName: string;
   productName: string;
-  description: string;
+  description: { content: string };
   barcode: string;
   salePrice: string;
   costPrice: string;
@@ -430,8 +430,8 @@ export class StoreService {
     if (isEmpty(productName)) {
       throw new BusinessException('请填写商品名称');
     }
-    const descriptionText = isEmpty(command.description) ? '' : command.description.trim();
-    if (descriptionText.length > DetailDescriptionLimit.MAX_LENGTH) {
+    const descriptionContent = this.readDescriptionContent(command.description);
+    if (descriptionContent.length > DetailDescriptionLimit.MAX_LENGTH) {
       throw new BusinessException(`详细描述不能超过${DetailDescriptionLimit.MAX_LENGTH}字`);
     }
     const barcode = isEmpty(command.barcode) ? '' : command.barcode.trim();
@@ -451,7 +451,7 @@ export class StoreService {
     storeProduct.shopId = shopId;
     storeProduct.categoryId = toIdentifier(categoryRow.id);
     storeProduct.productName = productName;
-    storeProduct.description = descriptionText;
+    storeProduct.description = { content: descriptionContent };
     storeProduct.barcode = barcode;
     storeProduct.salePrice = toMoneyString(command.salePrice);
     storeProduct.costPrice = costPriceText;
@@ -507,8 +507,8 @@ export class StoreService {
     if (isEmpty(productName)) {
       throw new BusinessException('请填写商品名称');
     }
-    const descriptionText = isEmpty(command.description) ? '' : command.description.trim();
-    if (descriptionText.length > DetailDescriptionLimit.MAX_LENGTH) {
+    const descriptionContent = this.readDescriptionContent(command.description);
+    if (descriptionContent.length > DetailDescriptionLimit.MAX_LENGTH) {
       throw new BusinessException(`详细描述不能超过${DetailDescriptionLimit.MAX_LENGTH}字`);
     }
     const barcode = isEmpty(command.barcode) ? '' : command.barcode.trim();
@@ -526,7 +526,7 @@ export class StoreService {
     }
     storeProduct.categoryId = toIdentifier(categoryRow.id);
     storeProduct.productName = productName;
-    storeProduct.description = descriptionText;
+    storeProduct.description = { content: descriptionContent };
     storeProduct.barcode = barcode;
     storeProduct.salePrice = toMoneyString(command.salePrice);
     storeProduct.costPrice = costPriceText;
@@ -1053,6 +1053,23 @@ export class StoreService {
   }
 
   /**
+   * 取出详细描述正文。没有时为空串。
+   */
+  private readDescriptionContent(description: { content?: string } | null | undefined): string {
+    if (isEmpty(description) || isEmpty(description.content)) {
+      return '';
+    }
+    return description.content.trim();
+  }
+
+  /**
+   * 转成前端使用的详细描述。没有正文时 content 为空串。
+   */
+  private toDescriptionView(description: { content?: string } | null | undefined): { content: string } {
+    return { content: this.readDescriptionContent(description) };
+  }
+
+  /**
    * 把商品实体转成前端字段。
    */
   private toProductView(storeProduct: StoreProduct, imageList: StoreProductImageView[], categoryName: string): StoreProductView {
@@ -1062,7 +1079,7 @@ export class StoreService {
       categoryId: toIdentifier(storeProduct.categoryId),
       categoryName: isEmpty(categoryName) ? '' : categoryName,
       productName: storeProduct.productName,
-      description: isEmpty(storeProduct.description) ? '' : storeProduct.description,
+      description: this.toDescriptionView(storeProduct.description),
       barcode: isEmpty(storeProduct.barcode) ? '' : storeProduct.barcode,
       salePrice: storeProduct.salePrice,
       costPrice: storeProduct.costPrice,

@@ -28,6 +28,13 @@ export class StoreProductCategory {
 /**
  * 商铺商品。库存只由进货和销售改。
  */
+/**
+ * 商品详细描述。
+ */
+export interface StoreProductDescription {
+  content: string;
+}
+
 @Entity('store_product')
 export class StoreProduct {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
@@ -42,8 +49,8 @@ export class StoreProduct {
   @Column({ type: 'varchar', length: 64 })
   productName: string;
 
-  @Column({ type: 'varchar', length: 500, default: '' })
-  description: string;
+  @Column({ type: 'json' })
+  description: StoreProductDescription;
 
   @Column({ type: 'varchar', length: 32, default: '' })
   barcode: string;

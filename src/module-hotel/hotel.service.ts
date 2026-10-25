@@ -50,7 +50,7 @@ import { MemberQueryService } from '../core/member/member-query.service';
 import { NotifyService } from '../core/notify/notify.service';
 import { Shop } from '../core/shop/shop.entity';
 import { ShopService } from '../core/shop/shop.service';
-import { HotelBookingOrder, HotelRoom, HotelRoomType, HotelRoomTypeImage, HotelStayRecord } from './hotel.entities';
+import { HotelBookingOrder, HotelRoom, HotelRoomType, HotelRoomTypeDescription, HotelRoomTypeImage, HotelStayRecord } from './hotel.entities';
 
 /**
  * 小程序创建酒店预订的入参。
@@ -70,7 +70,7 @@ export interface CreateHotelBookingCommand {
  */
 export interface SaveHotelRoomTypeCommand {
   typeName: string;
-  description?: string;
+  description?: Partial<HotelRoomTypeDescription>;
   price: string | number;
   status: string;
 }
@@ -99,7 +99,7 @@ export interface HotelRoomTypeView {
   id: string;
   shopId: string;
   typeName: string;
-  description: string;
+  description: HotelRoomTypeDescription;
   price: string;
   status: string;
   /** 挂在该房型下的房间数量。 */
@@ -845,10 +845,7 @@ export class HotelService {
     if (!isOneOf(command.status, Object.values(RecordStatus))) {
       throw new BusinessException('房型状态不正确');
     }
-    const descriptionText = isEmpty(command.description) ? '' : command.description.trim();
-    if (descriptionText.length > DetailDescriptionLimit.MAX_LENGTH) {
-      throw new BusinessException(`详细描述不能超过${DetailDescriptionLimit.MAX_LENGTH}字`);
-    }
+    this.normalizeRoomTypeDescription(command.description);
     if (!isPositiveMoney(command.price)) {
       throw new BusinessException('房价必须大于0');
     }
@@ -915,11 +912,46 @@ export class HotelService {
   }
 
   /**
+   * 整理房型描述。缺省为空串，超长直接拒绝。
+   */
+  private normalizeRoomTypeDescription(description: Partial<HotelRoomTypeDescription> | null | undefined): HotelRoomTypeDescription {
+    const bedType = isEmpty(description) || isEmpty(description.bedType) ? '' : description.bedType.trim();
+    const roomSize = isEmpty(description) || isEmpty(description.roomSize) ? '' : description.roomSize.trim();
+    const floorText = isEmpty(description) || isEmpty(description.floorText) ? '' : description.floorText.trim();
+    const guestCount = isEmpty(description) || isEmpty(description.guestCount) ? '' : description.guestCount.trim();
+    const breakfast = isEmpty(description) || isEmpty(description.breakfast) ? '' : description.breakfast.trim();
+    const freeParking = isEmpty(description) || isEmpty(description.freeParking) ? '' : description.freeParking.trim();
+    const bookingNotice = isEmpty(description) || isEmpty(description.bookingNotice) ? '' : description.bookingNotice.trim();
+    if (bedType.length > DetailDescriptionLimit.SHORT_MAX_LENGTH) {
+      throw new BusinessException(`床型不能超过${DetailDescriptionLimit.SHORT_MAX_LENGTH}字`);
+    }
+    if (roomSize.length > DetailDescriptionLimit.SHORT_MAX_LENGTH) {
+      throw new BusinessException(`大小不能超过${DetailDescriptionLimit.SHORT_MAX_LENGTH}字`);
+    }
+    if (floorText.length > DetailDescriptionLimit.SHORT_MAX_LENGTH) {
+      throw new BusinessException(`楼层不能超过${DetailDescriptionLimit.SHORT_MAX_LENGTH}字`);
+    }
+    if (guestCount.length > DetailDescriptionLimit.SHORT_MAX_LENGTH) {
+      throw new BusinessException(`人数不能超过${DetailDescriptionLimit.SHORT_MAX_LENGTH}字`);
+    }
+    if (breakfast.length > DetailDescriptionLimit.SHORT_MAX_LENGTH) {
+      throw new BusinessException(`早餐不能超过${DetailDescriptionLimit.SHORT_MAX_LENGTH}字`);
+    }
+    if (freeParking.length > DetailDescriptionLimit.SHORT_MAX_LENGTH) {
+      throw new BusinessException(`免费停车不能超过${DetailDescriptionLimit.SHORT_MAX_LENGTH}字`);
+    }
+    if (bookingNotice.length > DetailDescriptionLimit.MAX_LENGTH) {
+      throw new BusinessException(`预订须知不能超过${DetailDescriptionLimit.MAX_LENGTH}字`);
+    }
+    return { bedType, roomSize, floorText, guestCount, breakfast, freeParking, bookingNotice };
+  }
+
+  /**
    * 写入房型字段。
    */
   private fillRoomType(hotelRoomType: HotelRoomType, command: SaveHotelRoomTypeCommand): void {
     hotelRoomType.typeName = command.typeName;
-    hotelRoomType.description = isEmpty(command.description) ? '' : command.description.trim();
+    hotelRoomType.description = this.normalizeRoomTypeDescription(command.description);
     hotelRoomType.price = toMoneyString(command.price);
     hotelRoomType.status = command.status;
   }
@@ -958,7 +990,7 @@ export class HotelService {
       id: toIdentifier(roomType.id),
       shopId: toIdentifier(roomType.shopId),
       typeName: roomType.typeName,
-      description: isEmpty(roomType.description) ? '' : roomType.description,
+      description: this.normalizeRoomTypeDescription(roomType.description),
       price: roomType.price,
       status: roomType.status,
       roomCount,

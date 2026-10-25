@@ -270,6 +270,7 @@ export const ShopReviewLimit = {
  */
 export const DetailDescriptionLimit = {
   MAX_LENGTH: 500,
+  SHORT_MAX_LENGTH: 64,
 } as const;
 
 /**

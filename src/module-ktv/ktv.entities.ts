@@ -2,6 +2,15 @@ import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateCol
 import { decimalTransformer } from '../common/tools/column';
 
 /**
+ * 包厢类型描述。预定简述、退订规则、预订须知。
+ */
+export interface KtvRoomTypeDescription {
+  bookingSummary: string;
+  cancelRule: string;
+  bookingNotice: string;
+}
+
+/**
  * KTV 包厢类型。每小时价格在类型上，包厢仍保留自己的预订价格。
  */
 @Entity('ktv_room_type')
@@ -15,8 +24,8 @@ export class KtvRoomType {
   @Column({ type: 'varchar', length: 64 })
   typeName: string;
 
-  @Column({ type: 'varchar', length: 500, default: '' })
-  description: string;
+  @Column({ type: 'json' })
+  description: KtvRoomTypeDescription;
 
   @Column({ type: 'decimal', precision: 12, scale: 2, transformer: decimalTransformer })
   hourlyPrice: string;
