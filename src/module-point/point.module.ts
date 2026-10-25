@@ -9,6 +9,7 @@ import { MemberModule } from '../core/member/member.module';
 import { PointBindEntity } from './entities/point-bind';
 import { PointLedgerEntity } from './entities/point-ledger';
 import { PointMemberEntity } from './entities/point-member';
+import { PointAdminController } from './point-admin.controller';
 import { PointAppController } from './point-app.controller';
 import { PointDatabase } from './point.constants';
 import { PointLedgerService } from './point-ledger.service';
@@ -51,7 +52,7 @@ import { PointSnowflakeService } from './tools/point-snowflake.service';
     }),
     TypeOrmModule.forFeature([PointMemberEntity, PointBindEntity, PointLedgerEntity], PointDatabase.CONNECTION_NAME),
   ],
-  controllers: [PointMerchantController, PointAppController],
+  controllers: [PointMerchantController, PointAppController, PointAdminController],
   providers: [PointLedgerService, PointMemberService, PointSnowflakeService],
 })
 export class PointModule {}

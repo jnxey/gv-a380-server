@@ -391,6 +391,7 @@ export const PermissionCode = {
   MEMBER_QUERY: 'member:query',
   MEMBER_RECHARGE: 'member:recharge',
   FINANCE_BILL_QUERY: 'finance:bill:query',
+  FINANCE_POINT_QUERY: 'finance:point:query',
   KTV_SHOP_QUERY: 'ktv:shop:query',
   KTV_SHOP_SAVE: 'ktv:shop:save',
   KTV_ROOM_TYPE_QUERY: 'ktv:room-type:query',

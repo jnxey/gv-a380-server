@@ -130,19 +130,24 @@ export class RbacService {
   }
 
   /**
-   * 把平铺菜单组装成两级树。
+   * 按父级把平铺菜单收成树。目录下面还可以再挂页面。
    */
   private buildMenuTree(menuList: SysMenu[]): MenuTreeNode[] {
     const rootMenuList = menuList
       .filter((sysMenu) => toIdentifier(sysMenu.parentId) === MenuRoot.PARENT_ID)
       .sort((leftMenu, rightMenu) => leftMenu.sortOrder - rightMenu.sortOrder);
-    return rootMenuList.map((rootMenu) => {
-      const childMenuList = menuList
-        .filter((sysMenu) => toIdentifier(sysMenu.parentId) === toIdentifier(rootMenu.id))
-        .sort((leftMenu, rightMenu) => leftMenu.sortOrder - rightMenu.sortOrder)
-        .map((sysMenu) => this.toMenuNode(sysMenu, []));
-      return this.toMenuNode(rootMenu, childMenuList);
-    });
+    return rootMenuList.map((rootMenu) => this.toMenuBranch(rootMenu, menuList));
+  }
+
+  /**
+   * 挂上这个菜单的全部下级。
+   */
+  private toMenuBranch(sysMenu: SysMenu, menuList: SysMenu[]): MenuTreeNode {
+    const childMenuList = menuList
+      .filter((childMenu) => toIdentifier(childMenu.parentId) === toIdentifier(sysMenu.id))
+      .sort((leftMenu, rightMenu) => leftMenu.sortOrder - rightMenu.sortOrder)
+      .map((childMenu) => this.toMenuBranch(childMenu, menuList));
+    return this.toMenuNode(sysMenu, childMenuList);
   }
 
   /**

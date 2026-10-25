@@ -81,6 +81,7 @@ INSERT INTO sys_permission (id, permission_code, permission_name, module_code, m
 (45, 'ktv:review:query', 'KTV评价查询', 'KTV', 37),
 (46, 'hotel:review:query', '酒店评价查询', 'HOTEL', 46),
 (47, 'store:review:query', '商铺评价查询', 'STORE', 68),
+(48, 'finance:point:query', '用户积分查询', 'CORE', 24),
 (21, 'system:user:query', '账号查询', 'CORE', 51),
 (22, 'system:user:save', '账号保存', 'CORE', 51),
 (23, 'system:role:query', '角色查询', 'CORE', 52),
@@ -113,7 +114,8 @@ INSERT INTO sys_role_permission (id, role_id, permission_id) VALUES
 (103, 8, 35),(104, 8, 39),(105, 8, 40),(106, 8, 41),(111, 8, 43),
 (112, 1, 45),(113, 3, 45),(114, 4, 45),
 (115, 1, 46),(116, 5, 46),(117, 6, 46),
-(118, 1, 47),(119, 7, 47),(120, 8, 47);
+(118, 1, 47),(119, 7, 47),(120, 8, 47),
+(121, 1, 48),(122, 2, 48);
 
 INSERT INTO sys_menu (id, parent_id, menu_name, menu_path, component_path, permission_code, module_code, sort_order) VALUES
 (1, 0, 'A380中心', '/member', '', '', 'CORE', 10),
@@ -124,6 +126,8 @@ INSERT INTO sys_menu (id, parent_id, menu_name, menu_path, component_path, permi
 (12, 1, 'A380充值', '/member/recharge', 'member/recharge', 'member:recharge', 'CORE', 12),
 (21, 2, '财务流水', '/finance/bill', 'finance/bill', 'finance:bill:query', 'CORE', 21),
 (22, 2, '用户流水', '/finance/member-bill', 'finance/member-bill', 'finance:bill:query', 'CORE', 22),
+(23, 0, '积分管理', '/finance/point', '', '', 'CORE', 25),
+(24, 23, '用户积分', '/finance/point/account', 'finance/point-account', 'finance:point:query', 'CORE', 24),
 (31, 3, '门店管理', '/ktv/shop', 'ktv/shop', 'ktv:shop:query', 'KTV', 31),
 (34, 3, '包厢类型', '/ktv/room-type', 'ktv/room-type', 'ktv:room-type:query', 'KTV', 32),
 (32, 3, '包厢管理', '/ktv/room', 'ktv/room', 'ktv:room:query', 'KTV', 33),
@@ -170,7 +174,8 @@ INSERT INTO sys_role_menu (id, role_id, menu_id) VALUES
 (35, 5, 40),
 (51, 1, 6),(52, 1, 61),(69, 1, 67),(53, 1, 62),(54, 1, 63),(55, 1, 64),(56, 1, 65),(57, 1, 66),(78, 1, 68),
 (58, 7, 6),(59, 7, 61),(70, 7, 67),(60, 7, 62),(61, 7, 63),(62, 7, 64),(63, 7, 65),(64, 7, 66),(79, 7, 68),
-(65, 8, 6),(71, 8, 67),(66, 8, 62),(67, 8, 64),(68, 8, 65),(80, 8, 68);
+(65, 8, 6),(71, 8, 67),(66, 8, 62),(67, 8, 64),(68, 8, 65),(80, 8, 68),
+(121, 1, 23),(122, 1, 24),(123, 2, 23),(124, 2, 24);
 
 INSERT INTO sys_user_shop (id, user_id, shop_id) VALUES
 (1, 1, 1),(2, 1, 2),(3, 1, 3),(12, 1, 4),
