@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ArrayNotEmpty, IsArray, IsDefined, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { ArrayNotEmpty, IsArray, IsBoolean, IsDefined, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ModuleCode, PermissionCode, RecordStatus, ShopImageLimit, ShopType } from '../common/constants';
 import { RequireModule, RequirePermission, RequiresShop } from '../common/decorators/auth.decorators';
@@ -77,6 +77,9 @@ export class SaveStoreShopDto {
 
   @IsIn(Object.values(RecordStatus))
   status: string;
+
+  @IsBoolean()
+  requireRoomNo: boolean;
 }
 
 /**
@@ -113,6 +116,7 @@ export class StoreShopAdminController {
       timeZone: saveStoreShopDto.timeZone,
       businessHours: saveStoreShopDto.businessHours ?? null,
       shopAddress: saveStoreShopDto.shopAddress,
+      requireRoomNo: saveStoreShopDto.requireRoomNo,
       operatorId: loginAccountContext.accountId,
       boundShopIdList: loginAccountContext.boundShopIdList,
     });
@@ -180,6 +184,7 @@ export class StoreShopAdminController {
       timeZone: saveStoreShopDto.timeZone,
       businessHours: saveStoreShopDto.businessHours ?? null,
       shopAddress: saveStoreShopDto.shopAddress,
+      requireRoomNo: saveStoreShopDto.requireRoomNo,
       operatorId: loginAccountContext.accountId,
       boundShopIdList: loginAccountContext.boundShopIdList,
     });

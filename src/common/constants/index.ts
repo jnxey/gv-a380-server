@@ -116,14 +116,28 @@ export const StorePayMethod = {
 
 /**
  * 商铺销售单状态。
- * PENDING_PAY：已扣库存、尚未完成收款；有会员收款成功后进入 PENDING_REVIEW，无会员进入 COMPLETED。
+ * PENDING_PAY：已扣库存、尚未完成收款。
+ * 收银台收款成功后进入 COMPLETED。
+ * 小程序收款成功后进入 PENDING_DELIVERY，送出后为 DELIVERING，确认收货后进入 PENDING_REVIEW。
  */
 export const StoreSaleStatus = {
   PENDING_PAY: 'PENDING_PAY',
+  PENDING_DELIVERY: 'PENDING_DELIVERY',
+  DELIVERING: 'DELIVERING',
   PENDING_REVIEW: 'PENDING_REVIEW',
   COMPLETED: 'COMPLETED',
   CANCELLED: 'CANCELLED',
   REFUNDED: 'REFUNDED',
+} as const;
+
+/**
+ * 商铺送货信息长度。送货号和备注可以不填。
+ */
+export const StoreDeliveryField = {
+  COURIER_NAME_MAX_LENGTH: 64,
+  COURIER_CONTACT_MAX_LENGTH: 64,
+  DELIVERY_NO_MAX_LENGTH: 64,
+  REMARK_MAX_LENGTH: 128,
 } as const;
 
 /**

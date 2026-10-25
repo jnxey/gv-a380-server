@@ -43,6 +43,7 @@ export interface SaveShopCommand {
   timeZone?: string;
   businessHours?: { startTime?: string; endTime?: string } | null;
   shopAddress?: { longitude?: number | null; latitude?: number | null; addressText?: string } | null;
+  requireRoomNo?: boolean;
 }
 
 /**
@@ -512,6 +513,7 @@ export class ShopService {
     shop.businessHours = this.normalizeBusinessHours(command.businessHours);
     shop.shopAddress = this.normalizeShopAddress(command.shopAddress);
     shop.address = shop.shopAddress.addressText;
+    shop.requireRoomNo = command.requireRoomNo === true ? 1 : 0;
   }
 
   /**
@@ -579,6 +581,7 @@ export class ShopService {
     timeZone: string;
     businessHours: ShopBusinessHours | null;
     shopAddress: ShopAddressLocation | null;
+    requireRoomNo: boolean;
   } {
     return {
       shopId: toIdentifier(shop.id),
@@ -591,6 +594,14 @@ export class ShopService {
       timeZone: isEmpty(shop.timeZone) ? '' : shop.timeZone,
       businessHours: isEmpty(shop.businessHours) ? null : shop.businessHours,
       shopAddress: isEmpty(shop.shopAddress) ? null : shop.shopAddress,
+      requireRoomNo: this.readRequireRoomNo(shop.requireRoomNo),
     };
+  }
+
+  /**
+   * 门店是否要求进店必须带房间地址。只把明确的是当成真。
+   */
+  private readRequireRoomNo(requireRoomNo: number | boolean): boolean {
+    return requireRoomNo === true || requireRoomNo === 1;
   }
 }

@@ -13,7 +13,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { DetailDescriptionLimit, FinanceBizType, HotelWalkInContact, ModuleCode, PermissionCode, RecordStatus, ShopImageLimit, StorePayMethod } from '../common/constants';
+import { DetailDescriptionLimit, FinanceBizType, HotelWalkInContact, ModuleCode, PermissionCode, RecordStatus, ShopImageLimit, StoreDeliveryField, StorePayMethod } from '../common/constants';
 import { ShopContext } from '../common/context/shop-context';
 import { CurrentAccount } from '../common/decorators/current-account.decorator';
 import { RequireModule, RequirePermission, RequiresShop } from '../common/decorators/auth.decorators';
@@ -240,6 +240,31 @@ export class CreateAppStoreSaleDto {
 }
 
 /**
+ * 收银台开始送货。送货号和备注可以不填。
+ */
+export class StartStoreDeliveryDto {
+  @IsString()
+  @IsNotEmpty({ message: '请填写送货人' })
+  @MaxLength(StoreDeliveryField.COURIER_NAME_MAX_LENGTH, { message: '送货人过长' })
+  courierName: string;
+
+  @IsString()
+  @IsNotEmpty({ message: '请填写联系方式' })
+  @MaxLength(StoreDeliveryField.COURIER_CONTACT_MAX_LENGTH, { message: '联系方式过长' })
+  courierContact: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(StoreDeliveryField.DELIVERY_NO_MAX_LENGTH, { message: '送货号过长' })
+  deliveryNo?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(StoreDeliveryField.REMARK_MAX_LENGTH, { message: '送货备注过长' })
+  deliveryRemark?: string;
+}
+
+/**
  * 后台商铺接口。
  */
 @Controller('admin/store')
@@ -260,6 +285,16 @@ export class StoreAdminController {
       throw new ForbiddenException('请选择门店');
     }
     return currentShopId;
+  }
+
+  /**
+   * 收银台操作需要现金或会员收款权限之一。
+   */
+  private assertCashierPermission(loginAccountContext: LoginAccountContext): void {
+    const permissionCodeList = loginAccountContext.permissionCodeList;
+    if (permissionCodeList.includes(PermissionCode.STORE_SALE_CASH) !== true && permissionCodeList.includes(PermissionCode.STORE_SALE_MEMBER) !== true) {
+      throw new ForbiddenException('没有收款权限');
+    }
   }
 
   /**
@@ -470,6 +505,42 @@ export class StoreAdminController {
   }
 
   /**
+   * 当前门店的待发货销售单。
+   */
+  @Get('sales/pending-delivery')
+  listPendingDeliverySales(@CurrentAccount() loginAccountContext: LoginAccountContext) {
+    this.assertCashierPermission(loginAccountContext);
+    return this.storeService.listPendingDeliverySales();
+  }
+
+  /**
+   * 把待发货销售单改为送货中。
+   */
+  @Post('sales/:saleId/deliver')
+  startDelivery(
+    @Param('saleId') saleId: string,
+    @Body() startStoreDeliveryDto: StartStoreDeliveryDto,
+    @CurrentAccount() loginAccountContext: LoginAccountContext,
+  ) {
+    this.assertCashierPermission(loginAccountContext);
+    return this.storeService.startDelivery(saleId, {
+      courierName: startStoreDeliveryDto.courierName,
+      courierContact: startStoreDeliveryDto.courierContact,
+      deliveryNo: startStoreDeliveryDto.deliveryNo || '',
+      deliveryRemark: startStoreDeliveryDto.deliveryRemark || '',
+    });
+  }
+
+  /**
+   * 取消当前门店的待发货销售单。
+   */
+  @Post('sales/:saleId/cancel')
+  cancelSale(@Param('saleId') saleId: string, @CurrentAccount() loginAccountContext: LoginAccountContext) {
+    this.assertCashierPermission(loginAccountContext);
+    return this.storeService.cancelAdminSale(saleId, loginAccountContext.accountId);
+  }
+
+  /**
    * 按关键字找会员，供收银台会员余额收款使用。
    */
   @Get('members')
@@ -548,5 +619,21 @@ export class StoreAppController {
   @Get('sales')
   pageSales(@Query() pageQueryDto: PageQueryDto, @CurrentAccount() loginAccountContext: LoginAccountContext) {
     return this.storeService.pageMemberSales(loginAccountContext.accountId, pageQueryDto.page, pageQueryDto.pageSize);
+  }
+
+  /**
+   * 确认收到送货中的订单。
+   */
+  @Post('sales/:saleId/receive')
+  confirmReceipt(@Param('saleId') saleId: string, @CurrentAccount() loginAccountContext: LoginAccountContext) {
+    return this.storeService.confirmAppReceipt(loginAccountContext.accountId, saleId);
+  }
+
+  /**
+   * 取消自己的待发货订单。
+   */
+  @Post('sales/:saleId/cancel')
+  cancelSale(@Param('saleId') saleId: string, @CurrentAccount() loginAccountContext: LoginAccountContext) {
+    return this.storeService.cancelAppSale(loginAccountContext.accountId, saleId);
   }
 }

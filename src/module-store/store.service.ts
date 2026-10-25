@@ -15,6 +15,7 @@ import {
   ShopImageMime,
   ShopType,
   StorePayMethod,
+  StoreDeliveryField,
   StoreSaleItemLimit,
   StoreSaleStatus,
   UploadSetting,
@@ -90,6 +91,16 @@ export interface CreateAppStoreSaleCommand {
   contact: string;
   deliveryAddress: string;
   itemList: StoreSaleLineCommand[];
+}
+
+/**
+ * 开始送货时填写的送货信息。
+ */
+export interface StartStoreDeliveryCommand {
+  courierName: string;
+  courierContact: string;
+  deliveryNo: string;
+  deliveryRemark: string;
 }
 
 /**
@@ -170,6 +181,10 @@ export interface StoreSaleView {
   receiverName: string;
   contact: string;
   deliveryAddress: string;
+  courierName: string;
+  courierContact: string;
+  deliveryNo: string;
+  deliveryRemark: string;
   createdAt: string;
   itemList: Array<{
     productId: string;
@@ -690,6 +705,197 @@ export class StoreService {
   }
 
   /**
+   * 当前门店还没送出的销售单。给收银台右侧面板用。
+   */
+  async listPendingDeliverySales(): Promise<StoreSaleView[]> {
+    const shopId = await this.requireEnabledStoreShop();
+    const saleList = await this.storeSaleRepository.find({
+      where: { shopId, saleStatus: StoreSaleStatus.PENDING_DELIVERY },
+      order: { id: 'ASC' },
+    });
+    return this.toSaleViewList(saleList);
+  }
+
+  /**
+   * 把待发货销售单改为送货中，并记下送货信息。
+   */
+  async startDelivery(saleId: string, command: StartStoreDeliveryCommand): Promise<StoreSaleView> {
+    const shopId = await this.requireEnabledStoreShop();
+    const courierName = this.readRequiredDeliveryText(command.courierName, StoreDeliveryField.COURIER_NAME_MAX_LENGTH, '请填写送货人', '送货人过长');
+    const courierContact = this.readRequiredDeliveryText(
+      command.courierContact,
+      StoreDeliveryField.COURIER_CONTACT_MAX_LENGTH,
+      '请填写联系方式',
+      '联系方式过长',
+    );
+    const deliveryNo = this.readOptionalDeliveryText(command.deliveryNo, StoreDeliveryField.DELIVERY_NO_MAX_LENGTH, '送货号过长');
+    const deliveryRemark = this.readOptionalDeliveryText(command.deliveryRemark, StoreDeliveryField.REMARK_MAX_LENGTH, '送货备注过长');
+    return SimOrm.transaction(this.dataSource, async (entityManager) => {
+      // 1. 锁住销售单，只允许当前门店的待发货单进入送货
+      const storeSale = await this.lockStoreSale(entityManager, saleId);
+      if (toIdentifier(storeSale.shopId) !== toIdentifier(shopId)) {
+        throw new BusinessException('订单不存在');
+      }
+      if (storeSale.saleStatus !== StoreSaleStatus.PENDING_DELIVERY) {
+        throw new BusinessException('当前状态不能送货');
+      }
+      // 2. 写入送货信息并改为送货中
+      storeSale.courierName = courierName;
+      storeSale.courierContact = courierContact;
+      storeSale.deliveryNo = deliveryNo;
+      storeSale.deliveryRemark = deliveryRemark;
+      storeSale.saleStatus = StoreSaleStatus.DELIVERING;
+      const savedSale = await entityManager.getRepository(StoreSale).save(storeSale);
+      return (await this.toSaleViewList([savedSale], entityManager))[0];
+    });
+  }
+
+  /**
+   * 收银台取消待发货销售单。库存加回，会员余额退回。
+   */
+  async cancelAdminSale(saleId: string, operatorId: string): Promise<StoreSaleView> {
+    const shopId = await this.requireEnabledStoreShop();
+    return this.cancelPendingDeliverySale({
+      saleId,
+      shopId,
+      memberId: null,
+      operatorId,
+    });
+  }
+
+  /**
+   * 会员取消自己的待发货销售单。库存加回，余额退回。
+   */
+  async cancelAppSale(memberId: string, saleId: string): Promise<StoreSaleView> {
+    return this.cancelPendingDeliverySale({
+      saleId,
+      shopId: null,
+      memberId,
+      operatorId: null,
+    });
+  }
+
+  /**
+   * 会员确认收货。只接受送货中的本人订单，确认后进入待评价。
+   */
+  async confirmAppReceipt(memberId: string, saleId: string): Promise<StoreSaleView> {
+    return SimOrm.transaction(this.dataSource, async (entityManager) => {
+      const storeSale = await this.lockStoreSale(entityManager, saleId);
+      if (isEmpty(storeSale.memberId) || toIdentifier(storeSale.memberId) !== toIdentifier(memberId)) {
+        throw new BusinessException('只能确认自己的订单');
+      }
+      if (storeSale.saleStatus !== StoreSaleStatus.DELIVERING) {
+        throw new BusinessException('当前状态不能确认收货');
+      }
+      storeSale.saleStatus = StoreSaleStatus.PENDING_REVIEW;
+      const savedSale = await entityManager.getRepository(StoreSale).save(storeSale);
+      return (await this.toSaleViewList([savedSale], entityManager))[0];
+    });
+  }
+
+  /**
+   * 取消待发货销售单：回库存，会员支付则退余额。
+   */
+  private async cancelPendingDeliverySale(command: {
+    saleId: string;
+    shopId: string | null;
+    memberId: string | null;
+    operatorId: string | null;
+  }): Promise<StoreSaleView> {
+    return SimOrm.transaction(this.dataSource, async (entityManager) => {
+      // 1. 锁住销售单，确认还是待发货，并且是当前门店或本人的单
+      const storeSale = await this.lockStoreSale(entityManager, command.saleId);
+      if (isEmpty(command.shopId) !== true && toIdentifier(storeSale.shopId) !== toIdentifier(command.shopId)) {
+        throw new BusinessException('订单不存在');
+      }
+      if (isEmpty(command.memberId) !== true && (isEmpty(storeSale.memberId) || toIdentifier(storeSale.memberId) !== toIdentifier(command.memberId))) {
+        throw new BusinessException('只能取消自己的订单');
+      }
+      if (storeSale.saleStatus !== StoreSaleStatus.PENDING_DELIVERY) {
+        throw new BusinessException('当前状态不能取消');
+      }
+      // 2. 按明细把库存加回去
+      const saleItemList = await entityManager.getRepository(StoreSaleItem).find({
+        where: { saleId: toIdentifier(storeSale.id) },
+      });
+      if (saleItemList.length === 0) {
+        throw new BusinessException('订单没有商品');
+      }
+      const productIdList = saleItemList.map((saleItem) => toIdentifier(saleItem.productId));
+      const productList = await entityManager
+        .getRepository(StoreProduct)
+        .createQueryBuilder('storeProduct')
+        .setLock('pessimistic_write')
+        .where('storeProduct.id IN (:...productIdList)', { productIdList })
+        .getMany();
+      for (const saleItem of saleItemList) {
+        const storeProduct = productList.find((productRow) => toIdentifier(productRow.id) === toIdentifier(saleItem.productId));
+        if (isEmpty(storeProduct)) {
+          throw new BusinessException('商品不存在');
+        }
+        storeProduct.stockQuantity = storeProduct.stockQuantity + saleItem.quantity;
+      }
+      await entityManager.getRepository(StoreProduct).save(productList);
+      // 3. 会员余额支付的单退回余额，然后改为已取消
+      if (storeSale.payMethod === StorePayMethod.MEMBER && isEmpty(storeSale.memberId) !== true) {
+        await this.memberBalanceService.refundBalance({
+          entityManager,
+          memberId: toIdentifier(storeSale.memberId),
+          shopId: toIdentifier(storeSale.shopId),
+          amount: storeSale.amount,
+          bizOrderNo: storeSale.saleNo,
+          operatorId: command.operatorId,
+          remark: '商铺订单取消退款',
+        });
+      }
+      storeSale.saleStatus = StoreSaleStatus.CANCELLED;
+      const savedSale = await entityManager.getRepository(StoreSale).save(storeSale);
+      return (await this.toSaleViewList([savedSale], entityManager))[0];
+    });
+  }
+
+  /**
+   * 锁住一张销售单。找不到就当订单不存在。
+   */
+  private async lockStoreSale(entityManager: EntityManager, saleId: string): Promise<StoreSale> {
+    const storeSale = await entityManager
+      .getRepository(StoreSale)
+      .createQueryBuilder('storeSale')
+      .setLock('pessimistic_write')
+      .where('storeSale.id = :saleId', { saleId: toIdentifier(saleId) })
+      .getOne();
+    if (isEmpty(storeSale)) {
+      throw new BusinessException('订单不存在');
+    }
+    return storeSale;
+  }
+
+  /**
+   * 必填送货文字。去掉空白后不能空，也不能超过长度。
+   */
+  private readRequiredDeliveryText(value: string, maxLength: number, emptyMessage: string, tooLongMessage: string): string {
+    const deliveryText = isEmpty(value) ? '' : value.trim();
+    if (isEmpty(deliveryText)) {
+      throw new BusinessException(emptyMessage);
+    }
+    if (deliveryText.length > maxLength) {
+      throw new BusinessException(tooLongMessage);
+    }
+    return deliveryText;
+  }
+
+  /**
+   * 可空送货文字。有内容时不能超过长度。
+   */
+  private readOptionalDeliveryText(value: string, maxLength: number, tooLongMessage: string): string {
+    const deliveryText = isEmpty(value) ? '' : value.trim();
+    if (deliveryText.length > maxLength) {
+      throw new BusinessException(tooLongMessage);
+    }
+    return deliveryText;
+  }
+
+  /**
    * 会员分页查询自己的销售单。
    */
   async pageMemberSales(memberId: string, pageValue: unknown, pageSizeValue: unknown): Promise<PageResult<StoreSaleView>> {
@@ -780,7 +986,7 @@ export class StoreService {
   }
 
   /**
-   * 同一事务里先扣库存写入待支付销售单，再完成收款后改为已完成。
+   * 同一事务里先扣库存写入待支付销售单，再完成收款。收银台改为已完成，小程序改为待发货。
    */
   private async createSaleInTransaction(command: {
     shopId: string;
@@ -849,6 +1055,10 @@ export class StoreService {
       storeSale.receiverName = isEmpty(command.receiverName) ? '' : command.receiverName.trim();
       storeSale.contact = isEmpty(command.contact) ? '' : command.contact.trim();
       storeSale.deliveryAddress = isEmpty(command.deliveryAddress) ? '' : command.deliveryAddress.trim();
+      storeSale.courierName = '';
+      storeSale.courierContact = '';
+      storeSale.deliveryNo = '';
+      storeSale.deliveryRemark = '';
       const savedSale = await entityManager.getRepository(StoreSale).save(storeSale);
       for (const saleItem of saleItemList) {
         saleItem.saleId = toIdentifier(savedSale.id);
@@ -871,11 +1081,11 @@ export class StoreService {
           remark: isEmpty(savedSale.remark) ? '商铺销售' : savedSale.remark,
         });
       }
-      // 有会员时进入待评价，无会员直接已完成
-      if (isEmpty(command.memberId)) {
+      // 收银台直接已完成。小程序进入待发货
+      if (isEmpty(command.operatorId) !== true) {
         savedSale.saleStatus = StoreSaleStatus.COMPLETED;
       } else {
-        savedSale.saleStatus = StoreSaleStatus.PENDING_REVIEW;
+        savedSale.saleStatus = StoreSaleStatus.PENDING_DELIVERY;
       }
       await entityManager.getRepository(StoreSale).save(savedSale);
       return (await this.toSaleViewList([savedSale], entityManager))[0];
@@ -1202,6 +1412,10 @@ export class StoreService {
         receiverName: isEmpty(sale.receiverName) ? '' : sale.receiverName,
         contact: isEmpty(sale.contact) ? '' : sale.contact,
         deliveryAddress: isEmpty(sale.deliveryAddress) ? '' : sale.deliveryAddress,
+        courierName: isEmpty(sale.courierName) ? '' : sale.courierName,
+        courierContact: isEmpty(sale.courierContact) ? '' : sale.courierContact,
+        deliveryNo: isEmpty(sale.deliveryNo) ? '' : sale.deliveryNo,
+        deliveryRemark: isEmpty(sale.deliveryRemark) ? '' : sale.deliveryRemark,
         createdAt: sale.createdAt,
         itemList: itemList.map((saleItem) => ({
           productId: toIdentifier(saleItem.productId),

@@ -190,6 +190,18 @@ export class StoreSale {
   @Column({ type: 'varchar', length: 64, default: '' })
   contact: string;
 
+  @Column({ type: 'varchar', length: 64, default: '' })
+  courierName: string;
+
+  @Column({ type: 'varchar', length: 64, default: '' })
+  courierContact: string;
+
+  @Column({ type: 'varchar', length: 64, default: '' })
+  deliveryNo: string;
+
+  @Column({ type: 'varchar', length: 128, default: '' })
+  deliveryRemark: string;
+
   @CreateDateColumn({ type: 'datetime' })
   createdAt: string;
 }

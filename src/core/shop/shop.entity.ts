@@ -52,6 +52,9 @@ export class Shop {
   @Column({ type: 'varchar', length: 16 })
   status: string;
 
+  @Column({ type: 'tinyint', width: 1, default: 0 })
+  requireRoomNo: number = 0;
+
   @CreateDateColumn({ type: 'datetime' })
   createdAt: string;
 
