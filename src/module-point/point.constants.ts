@@ -17,6 +17,12 @@ export const PointLedgerDirection = {
   DECREASE: '2',
 } as const;
 
+/** 下单抵扣与取消退回使用的积分流水业务类型。 */
+export const PointBizType = {
+  CONSUME: '601',
+  CONSUME_REFUND: '602',
+} as const;
+
 export const PointMemberStatus = {
   NORMAL: '1',
   DISABLED: '2',

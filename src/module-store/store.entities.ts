@@ -59,6 +59,12 @@ export class StoreProduct {
   salePrice: string;
 
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0, transformer: decimalTransformer })
+  pointDeductAmount: string = '0.00';
+
+  @Column({ type: 'int', unsigned: true, default: 0 })
+  pointDeductPoints: number = 0;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0, transformer: decimalTransformer })
   costPrice: string;
 
   @Column({ type: 'int', unsigned: true, default: 0 })
@@ -178,6 +184,12 @@ export class StoreSale {
   @Column({ type: 'decimal', precision: 12, scale: 2, transformer: decimalTransformer })
   amount: string;
 
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0, transformer: decimalTransformer })
+  pointDeductAmount: string = '0.00';
+
+  @Column({ type: 'int', unsigned: true, default: 0 })
+  pointDeductPoints: number = 0;
+
   @Column({ type: 'bigint', unsigned: true, nullable: true })
   operatorId: string | null;
 
@@ -234,4 +246,10 @@ export class StoreSaleItem {
 
   @Column({ type: 'decimal', precision: 12, scale: 2, transformer: decimalTransformer })
   lineAmount: string;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0, transformer: decimalTransformer })
+  pointDeductAmount: string = '0.00';
+
+  @Column({ type: 'int', unsigned: true, default: 0 })
+  pointDeductPoints: number = 0;
 }

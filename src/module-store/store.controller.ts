@@ -80,6 +80,15 @@ export class SaveStoreProductDto {
   @IsNotEmpty()
   salePrice: string | number;
 
+  @IsOptional()
+  pointDeductAmount?: string | number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  pointDeductPoints?: number;
+
   @IsNotEmpty()
   costPrice: string | number;
 
@@ -150,6 +159,10 @@ export class CreateStoreSaleDto {
   @IsOptional()
   @IsString()
   remark?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  usePointDeduct?: boolean;
 
   @IsArray()
   @ArrayNotEmpty()
@@ -257,6 +270,10 @@ export class CreateAppStoreSaleDto {
   @IsString()
   @IsNotEmpty()
   deliveryAddress: string;
+
+  @IsOptional()
+  @IsBoolean()
+  usePointDeduct?: boolean;
 
   @IsArray()
   @ArrayNotEmpty()
@@ -618,6 +635,7 @@ export class StoreAdminController {
       payMethod: createStoreSaleDto.payMethod,
       memberId: createStoreSaleDto.memberId || '',
       remark: createStoreSaleDto.remark || '',
+      usePointDeduct: createStoreSaleDto.usePointDeduct === true,
       itemList: createStoreSaleDto.itemList,
       operatorId: loginAccountContext.accountId,
     });

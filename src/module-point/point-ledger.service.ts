@@ -6,7 +6,7 @@ import { BusinessException } from '../common/exceptions/business.exception';
 import { isEmpty, isNumber, isObject } from '../common/tools';
 import { SimOrm } from '../common/tools/sim-orm';
 import { PointBindEntity } from './entities/point-bind';
-import { PointDatabase, PointLedgerDirection, PointLedgerTable, PointMerchantResponse } from './point.constants';
+import { PointBizType, PointDatabase, PointLedgerDirection, PointLedgerTable, PointMerchantResponse } from './point.constants';
 import { PointMonthTableTool } from './tools/point-month-table.tool';
 import { PointSnowflakeService } from './tools/point-snowflake.service';
 
@@ -316,5 +316,31 @@ export class PointLedgerService {
       created_by: String(rawRow.created_by || ''),
       created_at: Number(rawRow.created_at || 0),
     };
+  }
+
+  /**
+   * 下单扣减积分。余额不足时由账簿抛出。
+   */
+  async consumeForOrder(account: string, points: number, remark: string): Promise<void> {
+    await this.create({
+      account,
+      bizType: PointBizType.CONSUME,
+      direction: PointLedgerDirection.DECREASE,
+      amount: points,
+      remark,
+    });
+  }
+
+  /**
+   * 取消订单时退回本单已扣积分。
+   */
+  async refundConsumedPoints(account: string, points: number, remark: string): Promise<void> {
+    await this.create({
+      account,
+      bizType: PointBizType.CONSUME_REFUND,
+      direction: PointLedgerDirection.INCREASE,
+      amount: points,
+      remark,
+    });
   }
 }

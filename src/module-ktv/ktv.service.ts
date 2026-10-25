@@ -43,6 +43,7 @@ import { MemberQueryService } from '../core/member/member-query.service';
 import { NotifyService } from '../core/notify/notify.service';
 import { Shop } from '../core/shop/shop.entity';
 import { ShopService } from '../core/shop/shop.service';
+import { PointLedgerService } from '../module-point/point-ledger.service';
 import { KtvBookingOrder, KtvConsumeOrder, KtvRoom, KtvRoomType, KtvRoomTypeDescription, KtvRoomTypeImage } from './ktv.entities';
 
 /**
@@ -56,6 +57,7 @@ export interface CreateKtvBookingCommand {
   durationHours: number;
   guestName: string;
   contact: string;
+  usePointDeduct?: boolean;
   cipherText: string;
 }
 
@@ -66,6 +68,8 @@ export interface SaveKtvRoomTypeCommand {
   typeName: string;
   description?: Partial<KtvRoomTypeDescription>;
   hourlyPrice: string | number;
+  pointDeductAmount?: string | number;
+  pointDeductPoints?: number;
   status: string;
 }
 
@@ -95,6 +99,8 @@ export interface KtvRoomTypeView {
   typeName: string;
   description: KtvRoomTypeDescription;
   hourlyPrice: string;
+  pointDeductAmount: string;
+  pointDeductPoints: number;
   status: string;
   /** 挂在该类型下的包厢数量。 */
   roomCount: number;
@@ -162,6 +168,7 @@ export class KtvService {
     private readonly memberBalanceService: MemberBalanceService,
     private readonly memberQueryService: MemberQueryService,
     private readonly chatUserClient: ChatUserClient,
+    private readonly pointLedgerService: PointLedgerService,
     private readonly miniappSignService: MiniappSignService,
     private readonly notifyService: NotifyService,
   ) {}
@@ -714,30 +721,40 @@ export class KtvService {
       bookingOrder.startTime = command.startTime;
       bookingOrder.endTime = bookingRange.endTime;
       bookingOrder.durationHours = durationHours;
-      bookingOrder.amount = toMoneyString(new Decimal(ktvRoomType.hourlyPrice).times(durationHours));
+      const orderAmount = new Decimal(ktvRoomType.hourlyPrice).times(durationHours);
+      const pointPlan = await this.buildKtvPointPlan(memberId, ktvRoomType, durationHours, command.usePointDeduct === true);
+      bookingOrder.amount = toMoneyString(orderAmount);
+      bookingOrder.pointDeductAmount = pointPlan.amount;
+      bookingOrder.pointDeductPoints = pointPlan.points;
       bookingOrder.orderStatus = KtvOrderStatus.PENDING_PAY;
       bookingOrder.verifyCode = await this.createUniqueVerifyCode(entityManager);
       const savedOrder = await entityManager.getRepository(KtvBookingOrder).save(bookingOrder);
-      // 6. 本平台余额支付：扣款成功后进入待核销。以后接外部支付时，在回调里再改成待核销
-      await this.memberBalanceService.deductBalance({
-        entityManager,
-        memberId,
-        shopId,
-        amount: savedOrder.amount,
-        bizType: FinanceBizType.KTV_BOOKING,
-        bizOrderNo: savedOrder.orderNo,
-        operatorId: null,
-        remark: 'KTV包厢预订',
-      });
+      // 6. 余额只扣抵扣后的实付。实付为 0 时不再调余额扣款
+      const payableAmount = orderAmount.minus(pointPlan.amount);
+      if (payableAmount.gt(0)) {
+        await this.memberBalanceService.deductBalance({
+          entityManager,
+          memberId,
+          shopId,
+          amount: toMoneyString(payableAmount),
+          bizType: FinanceBizType.KTV_BOOKING,
+          bizOrderNo: savedOrder.orderNo,
+          operatorId: null,
+          remark: 'KTV包厢预订',
+        });
+      }
       savedOrder.orderStatus = KtvOrderStatus.PENDING_VERIFY;
       await entityManager.getRepository(KtvBookingOrder).save(savedOrder);
-      // 7. 通知会员预订结果
+      // 7. 通知会员预订结果。积分放在最后扣，失败时本事务会把余额和订单一起回滚
       await this.notifyService.createMemberMessage(entityManager, {
         shopId,
         memberId,
         title: 'KTV预订成功',
         content: `订单${savedOrder.orderNo}已预订，核销码${savedOrder.verifyCode}`,
       });
+      if (pointPlan.points > 0) {
+        await this.pointLedgerService.consumeForOrder(pointPlan.account, pointPlan.points, 'KTV预订积分抵扣');
+      }
       return savedOrder;
     });
   }
@@ -1049,6 +1066,7 @@ export class KtvService {
     if (!isPositiveMoney(command.hourlyPrice)) {
       throw new BusinessException('每小时价格必须大于0');
     }
+    this.readPointDeductSetting(command.hourlyPrice, command.pointDeductAmount, command.pointDeductPoints, '每小时价格');
     if (!isOneOf(command.status, Object.values(RecordStatus))) {
       throw new BusinessException('包厢类型状态不正确');
     }
@@ -1140,7 +1158,89 @@ export class KtvService {
     ktvRoomType.typeName = command.typeName;
     ktvRoomType.description = this.normalizeRoomTypeDescription(command.description);
     ktvRoomType.hourlyPrice = toMoneyString(command.hourlyPrice);
+    const pointDeduct = this.readPointDeductSetting(command.hourlyPrice, command.pointDeductAmount, command.pointDeductPoints, '每小时价格');
+    ktvRoomType.pointDeductAmount = pointDeduct.amount;
+    ktvRoomType.pointDeductPoints = pointDeduct.points;
     ktvRoomType.status = command.status;
+  }
+
+  /**
+   * 校验单位上的积分抵扣。金额和积分必须同时为 0，或同时有效，且金额不超过单位售价。
+   */
+  private readPointDeductSetting(
+    unitPrice: string | number,
+    pointDeductAmount: string | number | undefined,
+    pointDeductPoints: number | undefined,
+    priceLabel: string,
+  ): { amount: string; points: number } {
+    let amountDecimal: Decimal;
+    try {
+      amountDecimal = new Decimal(isEmpty(pointDeductAmount) ? 0 : pointDeductAmount);
+    } catch {
+      throw new BusinessException('积分可抵扣金额不正确');
+    }
+    const points = isEmpty(pointDeductPoints) ? 0 : pointDeductPoints;
+    if (amountDecimal.isNegative() || amountDecimal.isFinite() !== true) {
+      throw new BusinessException('积分可抵扣金额不正确');
+    }
+    if (isNumber(points) !== true || Number.isInteger(points) !== true || points < 0) {
+      throw new BusinessException('抵扣积分数量不正确');
+    }
+    const amountIsZero = amountDecimal.isZero();
+    const pointsIsZero = points === 0;
+    if (amountIsZero !== pointsIsZero) {
+      throw new BusinessException('积分可抵扣金额和抵扣积分数量需要同时填写');
+    }
+    if (amountIsZero !== true && amountDecimal.greaterThan(new Decimal(unitPrice))) {
+      throw new BusinessException(`积分可抵扣金额不能大于${priceLabel}`);
+    }
+    return { amount: toMoneyString(amountDecimal), points };
+  }
+
+  /**
+   * 按包厢类型的每小时配置，算出本单要扣的金额和积分。未选择抵扣时都是 0。
+   */
+  private async buildKtvPointPlan(
+    memberId: string,
+    roomType: KtvRoomType,
+    durationHours: number,
+    usePointDeduct: boolean,
+  ): Promise<{ amount: string; points: number; account: string }> {
+    if (usePointDeduct !== true) {
+      return { amount: '0.00', points: 0, account: '' };
+    }
+    const unitAmount = new Decimal(isEmpty(roomType.pointDeductAmount) ? 0 : roomType.pointDeductAmount);
+    const unitPoints = isEmpty(roomType.pointDeductPoints) ? 0 : roomType.pointDeductPoints;
+    if (unitAmount.gt(0) !== true || unitPoints <= 0) {
+      throw new BusinessException('该包厢类型不支持积分抵扣');
+    }
+    const totalAmount = unitAmount.times(durationHours);
+    const totalPoints = unitPoints * durationHours;
+    const orderAmount = new Decimal(roomType.hourlyPrice).times(durationHours);
+    if (totalAmount.greaterThan(orderAmount)) {
+      throw new BusinessException('积分可抵扣金额不能大于订单金额');
+    }
+    const pointsAccount = await this.readMemberPointAccount(memberId);
+    const balanceView = await this.pointLedgerService.getCurrentBalanceByAccount(pointsAccount);
+    if (Math.trunc(balanceView.balance) < totalPoints) {
+      throw new BusinessException('积分余额不足');
+    }
+    return { amount: toMoneyString(totalAmount), points: totalPoints, account: pointsAccount };
+  }
+
+  /**
+   * 用会员用户名向聊天服务取已绑定的积分账号。
+   */
+  private async readMemberPointAccount(memberId: string): Promise<string> {
+    const memberAccount = await this.memberQueryService.findById(memberId);
+    if (isEmpty(memberAccount) || isEmpty(memberAccount.username)) {
+      throw new BusinessException('未绑定积分账号');
+    }
+    const chatUserProfile = await this.chatUserClient.findByKeyword(memberAccount.username);
+    if (isEmpty(chatUserProfile.pointAccount)) {
+      throw new BusinessException('未绑定积分账号');
+    }
+    return chatUserProfile.pointAccount.trim();
   }
 
   /**
@@ -1179,6 +1279,8 @@ export class KtvService {
       typeName: roomType.typeName,
       description: this.normalizeRoomTypeDescription(roomType.description),
       hourlyPrice: roomType.hourlyPrice,
+      pointDeductAmount: roomType.pointDeductAmount,
+      pointDeductPoints: roomType.pointDeductPoints,
       status: roomType.status,
       roomCount,
       imageList,
@@ -1494,15 +1596,22 @@ export class KtvService {
     }
     bookingOrder.orderStatus = KtvOrderStatus.REFUNDED;
     await entityManager.getRepository(KtvBookingOrder).save(bookingOrder);
-    await this.memberBalanceService.refundBalance({
-      entityManager,
-      memberId: toIdentifier(bookingOrder.memberId),
-      shopId: toIdentifier(bookingOrder.shopId),
-      amount: bookingOrder.amount,
-      bizOrderNo: bookingOrder.orderNo,
-      operatorId,
-      remark: 'KTV预订取消退款',
-    });
+    const payableAmount = new Decimal(bookingOrder.amount).minus(isEmpty(bookingOrder.pointDeductAmount) ? 0 : bookingOrder.pointDeductAmount);
+    if (payableAmount.gt(0)) {
+      await this.memberBalanceService.refundBalance({
+        entityManager,
+        memberId: toIdentifier(bookingOrder.memberId),
+        shopId: toIdentifier(bookingOrder.shopId),
+        amount: toMoneyString(payableAmount),
+        bizOrderNo: bookingOrder.orderNo,
+        operatorId,
+        remark: 'KTV预订取消退款',
+      });
+    }
+    if (bookingOrder.pointDeductPoints > 0) {
+      const pointsAccount = await this.readMemberPointAccount(toIdentifier(bookingOrder.memberId));
+      await this.pointLedgerService.refundConsumedPoints(pointsAccount, bookingOrder.pointDeductPoints, 'KTV预订取消退回积分');
+    }
   }
 
   /**

@@ -31,6 +31,7 @@ import { ChatUserClient } from '../core/member/chat-user.client';
 import { MemberBalanceService } from '../core/member/member-balance.service';
 import { MemberQueryService } from '../core/member/member-query.service';
 import { ShopService } from '../core/shop/shop.service';
+import { PointLedgerService } from '../module-point/point-ledger.service';
 import { StoreProduct, StoreProductCategory, StoreProductImage, StorePurchase, StorePurchaseItem, StoreSale, StoreSaleItem } from './store.entities';
 
 /**
@@ -50,6 +51,8 @@ export interface SaveStoreProductCommand {
   description?: { content?: string };
   barcode: string;
   salePrice: string | number;
+  pointDeductAmount?: string | number;
+  pointDeductPoints?: number;
   costPrice: string | number;
   quickProduct: boolean;
   status: string;
@@ -79,6 +82,7 @@ export interface CreateStoreSaleCommand {
   payMethod: string;
   memberId: string;
   remark: string;
+  usePointDeduct?: boolean;
   itemList: StoreSaleLineCommand[];
   operatorId: string;
 }
@@ -92,6 +96,7 @@ export interface CreateAppStoreSaleCommand {
   receiverName: string;
   contact: string;
   deliveryAddress: string;
+  usePointDeduct?: boolean;
   itemList: StoreSaleLineCommand[];
 }
 
@@ -144,6 +149,8 @@ export interface StoreProductView {
   description: { content: string };
   barcode: string;
   salePrice: string;
+  pointDeductAmount: string;
+  pointDeductPoints: number;
   costPrice: string;
   stockQuantity: number;
   quickProduct: boolean;
@@ -180,6 +187,8 @@ export interface StoreSaleView {
   payMethod: string;
   saleStatus: string;
   amount: string;
+  pointDeductAmount: string;
+  pointDeductPoints: number;
   remark: string;
   receiverName: string;
   contact: string;
@@ -219,6 +228,7 @@ export class StoreService {
     private readonly memberBalanceService: MemberBalanceService,
     private readonly memberQueryService: MemberQueryService,
     private readonly chatUserClient: ChatUserClient,
+    private readonly pointLedgerService: PointLedgerService,
     private readonly miniappSignService: MiniappSignService,
   ) {}
 
@@ -489,6 +499,9 @@ export class StoreService {
     storeProduct.description = { content: descriptionContent };
     storeProduct.barcode = barcode;
     storeProduct.salePrice = toMoneyString(command.salePrice);
+    const pointDeduct = this.readPointDeductSetting(command.salePrice, command.pointDeductAmount, command.pointDeductPoints, '售价');
+    storeProduct.pointDeductAmount = pointDeduct.amount;
+    storeProduct.pointDeductPoints = pointDeduct.points;
     storeProduct.costPrice = costPriceText;
     storeProduct.stockQuantity = 0;
     storeProduct.sortOrder = await this.nextProductSortOrder(shopId);
@@ -565,6 +578,9 @@ export class StoreService {
     storeProduct.description = { content: descriptionContent };
     storeProduct.barcode = barcode;
     storeProduct.salePrice = toMoneyString(command.salePrice);
+    const pointDeduct = this.readPointDeductSetting(command.salePrice, command.pointDeductAmount, command.pointDeductPoints, '售价');
+    storeProduct.pointDeductAmount = pointDeduct.amount;
+    storeProduct.pointDeductPoints = pointDeduct.points;
     storeProduct.costPrice = costPriceText;
     storeProduct.quickProduct = command.quickProduct === true ? QuickProductFlag.YES : QuickProductFlag.NO;
     storeProduct.status = command.status;
@@ -903,12 +919,13 @@ export class StoreService {
       }
       await entityManager.getRepository(StoreProduct).save(productList);
       // 3. 会员余额支付的单退回余额，然后改为已取消
-      if (storeSale.payMethod === StorePayMethod.MEMBER && isEmpty(storeSale.memberId) !== true) {
+      const payableAmount = new Decimal(storeSale.amount).minus(isEmpty(storeSale.pointDeductAmount) ? 0 : storeSale.pointDeductAmount);
+      if (storeSale.payMethod === StorePayMethod.MEMBER && isEmpty(storeSale.memberId) !== true && payableAmount.gt(0)) {
         await this.memberBalanceService.refundBalance({
           entityManager,
           memberId: toIdentifier(storeSale.memberId),
           shopId: toIdentifier(storeSale.shopId),
-          amount: storeSale.amount,
+          amount: toMoneyString(payableAmount),
           bizOrderNo: storeSale.saleNo,
           operatorId: command.operatorId,
           remark: '商铺订单取消退款',
@@ -916,7 +933,12 @@ export class StoreService {
       }
       storeSale.saleStatus = StoreSaleStatus.CANCELLED;
       const savedSale = await entityManager.getRepository(StoreSale).save(storeSale);
-      return (await this.toSaleViewList([savedSale], entityManager))[0];
+      const saleView = (await this.toSaleViewList([savedSale], entityManager))[0];
+      if (savedSale.pointDeductPoints > 0 && isEmpty(savedSale.memberId) !== true) {
+        const pointsAccount = await this.readMemberPointAccount(toIdentifier(savedSale.memberId));
+        await this.pointLedgerService.refundConsumedPoints(pointsAccount, savedSale.pointDeductPoints, '商铺订单取消退回积分');
+      }
+      return saleView;
     });
   }
 
@@ -1002,6 +1024,7 @@ export class StoreService {
       receiverName: '',
       contact: '',
       deliveryAddress: '',
+      usePointDeduct: command.usePointDeduct === true,
       itemList: command.itemList,
       operatorId: command.operatorId,
       securityKeyUsername: '',
@@ -1045,6 +1068,7 @@ export class StoreService {
       receiverName,
       contact,
       deliveryAddress,
+      usePointDeduct: command.usePointDeduct === true,
       itemList: command.itemList,
       operatorId: null,
       securityKeyUsername,
@@ -1062,6 +1086,7 @@ export class StoreService {
     receiverName: string;
     contact: string;
     deliveryAddress: string;
+    usePointDeduct: boolean;
     itemList: StoreSaleLineCommand[];
     operatorId: string | null;
     securityKeyUsername: string;
@@ -1082,6 +1107,9 @@ export class StoreService {
         throw new BusinessException('商品不存在');
       }
       let saleAmount = new Decimal(0);
+      let pointDeductAmount = new Decimal(0);
+      let pointDeductPoints = 0;
+      const usePointDeduct = command.payMethod === StorePayMethod.MEMBER && command.usePointDeduct === true;
       const saleItemList: StoreSaleItem[] = [];
       for (const saleLine of cleanedItemList) {
         const storeProduct = productList.find((productRow) => toIdentifier(productRow.id) === toIdentifier(saleLine.productId));
@@ -1096,6 +1124,18 @@ export class StoreService {
         }
         const lineAmount = new Decimal(storeProduct.salePrice).times(saleLine.quantity);
         saleAmount = saleAmount.plus(lineAmount);
+        let linePointAmount = new Decimal(0);
+        let linePointPoints = 0;
+        if (usePointDeduct === true) {
+          const unitPointAmount = new Decimal(isEmpty(storeProduct.pointDeductAmount) ? 0 : storeProduct.pointDeductAmount);
+          const unitPointPoints = isEmpty(storeProduct.pointDeductPoints) ? 0 : storeProduct.pointDeductPoints;
+          if (unitPointAmount.gt(0) && unitPointPoints > 0) {
+            linePointAmount = unitPointAmount.times(saleLine.quantity);
+            linePointPoints = unitPointPoints * saleLine.quantity;
+            pointDeductAmount = pointDeductAmount.plus(linePointAmount);
+            pointDeductPoints += linePointPoints;
+          }
+        }
         storeProduct.stockQuantity = storeProduct.stockQuantity - saleLine.quantity;
         const saleItem = new StoreSaleItem();
         saleItem.productId = toIdentifier(storeProduct.id);
@@ -1103,10 +1143,29 @@ export class StoreService {
         saleItem.salePrice = storeProduct.salePrice;
         saleItem.quantity = saleLine.quantity;
         saleItem.lineAmount = toMoneyString(lineAmount);
+        saleItem.pointDeductAmount = toMoneyString(linePointAmount);
+        saleItem.pointDeductPoints = linePointPoints;
         saleItemList.push(saleItem);
       }
       if (saleAmount.lte(0)) {
         throw new BusinessException('销售金额必须大于0');
+      }
+      let pointsAccount = '';
+      if (usePointDeduct === true) {
+        if (pointDeductPoints <= 0) {
+          throw new BusinessException('没有可抵扣的商品');
+        }
+        if (pointDeductAmount.greaterThan(saleAmount)) {
+          throw new BusinessException('积分可抵扣金额不能大于订单金额');
+        }
+        if (isEmpty(command.memberId)) {
+          throw new BusinessException('请选择会员');
+        }
+        pointsAccount = await this.readMemberPointAccount(command.memberId);
+        const balanceView = await this.pointLedgerService.getCurrentBalanceByAccount(pointsAccount);
+        if (Math.trunc(balanceView.balance) < pointDeductPoints) {
+          throw new BusinessException('积分余额不足');
+        }
       }
       // 2. 先写入待支付销售单和明细，并扣库存占货
       const storeSale = new StoreSale();
@@ -1116,6 +1175,8 @@ export class StoreService {
       storeSale.payMethod = command.payMethod;
       storeSale.saleStatus = StoreSaleStatus.PENDING_PAY;
       storeSale.amount = toMoneyString(saleAmount);
+      storeSale.pointDeductAmount = toMoneyString(pointDeductAmount);
+      storeSale.pointDeductPoints = pointDeductPoints;
       storeSale.operatorId = command.operatorId;
       storeSale.remark = isEmpty(command.remark) ? '' : command.remark.trim();
       storeSale.receiverName = isEmpty(command.receiverName) ? '' : command.receiverName.trim();
@@ -1136,16 +1197,19 @@ export class StoreService {
         if (isEmpty(command.memberId)) {
           throw new BusinessException('请选择会员');
         }
-        await this.memberBalanceService.deductBalance({
-          entityManager,
-          memberId: command.memberId,
-          shopId: command.shopId,
-          amount: savedSale.amount,
-          bizType: FinanceBizType.STORE_SALE,
-          bizOrderNo: savedSale.saleNo,
-          operatorId: command.operatorId,
-          remark: isEmpty(savedSale.remark) ? '商铺销售' : savedSale.remark,
-        });
+        const payableAmount = new Decimal(savedSale.amount).minus(savedSale.pointDeductAmount);
+        if (payableAmount.gt(0)) {
+          await this.memberBalanceService.deductBalance({
+            entityManager,
+            memberId: command.memberId,
+            shopId: command.shopId,
+            amount: toMoneyString(payableAmount),
+            bizType: FinanceBizType.STORE_SALE,
+            bizOrderNo: savedSale.saleNo,
+            operatorId: command.operatorId,
+            remark: isEmpty(savedSale.remark) ? '商铺销售' : savedSale.remark,
+          });
+        }
       }
       // 收银台直接已完成。小程序进入待发货
       if (isEmpty(command.operatorId) !== true) {
@@ -1154,7 +1218,11 @@ export class StoreService {
         savedSale.saleStatus = StoreSaleStatus.PENDING_DELIVERY;
       }
       await entityManager.getRepository(StoreSale).save(savedSale);
-      return (await this.toSaleViewList([savedSale], entityManager))[0];
+      const saleView = (await this.toSaleViewList([savedSale], entityManager))[0];
+      if (pointDeductPoints > 0) {
+        await this.pointLedgerService.consumeForOrder(pointsAccount, pointDeductPoints, '商铺消费积分抵扣');
+      }
+      return saleView;
     });
   }
 
@@ -1392,6 +1460,8 @@ export class StoreService {
       description: this.toDescriptionView(storeProduct.description),
       barcode: isEmpty(storeProduct.barcode) ? '' : storeProduct.barcode,
       salePrice: storeProduct.salePrice,
+      pointDeductAmount: storeProduct.pointDeductAmount,
+      pointDeductPoints: storeProduct.pointDeductPoints,
       costPrice: storeProduct.costPrice,
       stockQuantity: storeProduct.stockQuantity,
       quickProduct: this.readQuickProduct(storeProduct.quickProduct),
@@ -1482,6 +1552,8 @@ export class StoreService {
         payMethod: sale.payMethod,
         saleStatus: sale.saleStatus,
         amount: sale.amount,
+        pointDeductAmount: isEmpty(sale.pointDeductAmount) ? '0.00' : sale.pointDeductAmount,
+        pointDeductPoints: isEmpty(sale.pointDeductPoints) ? 0 : sale.pointDeductPoints,
         remark: isEmpty(sale.remark) ? '' : sale.remark,
         receiverName: isEmpty(sale.receiverName) ? '' : sale.receiverName,
         contact: isEmpty(sale.contact) ? '' : sale.contact,
@@ -1500,5 +1572,53 @@ export class StoreService {
         })),
       };
     });
+  }
+
+  /**
+   * 校验单位上的积分抵扣。金额和积分必须同时为 0，或同时有效，且金额不超过单位售价。
+   */
+  private readPointDeductSetting(
+    unitPrice: string | number,
+    pointDeductAmount: string | number | undefined,
+    pointDeductPoints: number | undefined,
+    priceLabel: string,
+  ): { amount: string; points: number } {
+    let amountDecimal: Decimal;
+    try {
+      amountDecimal = new Decimal(isEmpty(pointDeductAmount) ? 0 : pointDeductAmount);
+    } catch {
+      throw new BusinessException('积分可抵扣金额不正确');
+    }
+    const points = isEmpty(pointDeductPoints) ? 0 : pointDeductPoints;
+    if (amountDecimal.isNegative() || amountDecimal.isFinite() !== true) {
+      throw new BusinessException('积分可抵扣金额不正确');
+    }
+    if (isNumber(points) !== true || Number.isInteger(points) !== true || points < 0) {
+      throw new BusinessException('抵扣积分数量不正确');
+    }
+    const amountIsZero = amountDecimal.isZero();
+    const pointsIsZero = points === 0;
+    if (amountIsZero !== pointsIsZero) {
+      throw new BusinessException('积分可抵扣金额和抵扣积分数量需要同时填写');
+    }
+    if (amountIsZero !== true && amountDecimal.greaterThan(new Decimal(unitPrice))) {
+      throw new BusinessException(`积分可抵扣金额不能大于${priceLabel}`);
+    }
+    return { amount: toMoneyString(amountDecimal), points };
+  }
+
+  /**
+   * 用会员用户名向聊天服务取已绑定的积分账号。
+   */
+  private async readMemberPointAccount(memberId: string): Promise<string> {
+    const memberAccount = await this.memberQueryService.findById(memberId);
+    if (isEmpty(memberAccount) || isEmpty(memberAccount.username)) {
+      throw new BusinessException('未绑定积分账号');
+    }
+    const chatUserProfile = await this.chatUserClient.findByKeyword(memberAccount.username);
+    if (isEmpty(chatUserProfile.pointAccount)) {
+      throw new BusinessException('未绑定积分账号');
+    }
+    return chatUserProfile.pointAccount.trim();
   }
 }

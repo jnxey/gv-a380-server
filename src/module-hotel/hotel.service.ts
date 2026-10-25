@@ -46,7 +46,9 @@ import {
 } from '../common/tools';
 import { SimOrm } from '../common/tools/sim-orm';
 import { MemberBalanceService } from '../core/member/member-balance.service';
+import { ChatUserClient } from '../core/member/chat-user.client';
 import { MemberQueryService } from '../core/member/member-query.service';
+import { PointLedgerService } from '../module-point/point-ledger.service';
 import { NotifyService } from '../core/notify/notify.service';
 import { Shop } from '../core/shop/shop.entity';
 import { ShopService } from '../core/shop/shop.service';
@@ -62,6 +64,7 @@ export interface CreateHotelBookingCommand {
   checkOutDate: string;
   guestName: string;
   contact: string;
+  usePointDeduct?: boolean;
   cipherText: string;
 }
 
@@ -72,6 +75,8 @@ export interface SaveHotelRoomTypeCommand {
   typeName: string;
   description?: Partial<HotelRoomTypeDescription>;
   price: string | number;
+  pointDeductAmount?: string | number;
+  pointDeductPoints?: number;
   status: string;
 }
 
@@ -101,6 +106,8 @@ export interface HotelRoomTypeView {
   typeName: string;
   description: HotelRoomTypeDescription;
   price: string;
+  pointDeductAmount: string;
+  pointDeductPoints: number;
   status: string;
   /** 挂在该房型下的房间数量。 */
   roomCount: number;
@@ -165,6 +172,8 @@ export class HotelService {
     private readonly shopService: ShopService,
     private readonly memberBalanceService: MemberBalanceService,
     private readonly memberQueryService: MemberQueryService,
+    private readonly chatUserClient: ChatUserClient,
+    private readonly pointLedgerService: PointLedgerService,
     private readonly miniappSignService: MiniappSignService,
     private readonly notifyService: NotifyService,
   ) {}
@@ -503,10 +512,12 @@ export class HotelService {
       if (isEmpty(hotelRoomType)) {
         throw new BusinessException('房型不存在或已停用');
       }
-      // 3. 房费等于每晚价格乘以晚数
+      // 3. 房费等于每晚价格乘以晚数。选择抵扣时再按每晚配置乘晚数
       const nightCount = calculateNightCount(command.checkInDate, command.checkOutDate);
-      const roomFeeText = toMoneyString(new Decimal(hotelRoomType.price).times(nightCount));
-      // 4. 先写入待支付订单。金额等于每晚价格乘以晚数
+      const orderAmount = new Decimal(hotelRoomType.price).times(nightCount);
+      const pointPlan = await this.buildHotelPointPlan(memberId, hotelRoomType, nightCount, command.usePointDeduct === true);
+      const roomFeeText = toMoneyString(orderAmount);
+      // 4. 先写入待支付订单。金额仍是原房费，抵扣另记
       const bookingOrder = new HotelBookingOrder();
       bookingOrder.shopId = shopId;
       bookingOrder.orderNo = createBusinessNo(BusinessNoPrefix.HOTEL_BOOKING);
@@ -518,27 +529,35 @@ export class HotelService {
       bookingOrder.checkInDate = command.checkInDate;
       bookingOrder.checkOutDate = command.checkOutDate;
       bookingOrder.amount = roomFeeText;
+      bookingOrder.pointDeductAmount = pointPlan.amount;
+      bookingOrder.pointDeductPoints = pointPlan.points;
       bookingOrder.orderStatus = HotelOrderStatus.PENDING_PAY;
       const savedOrder = await entityManager.getRepository(HotelBookingOrder).save(bookingOrder);
-      // 5. 本平台余额支付：扣款成功后进入已预订。以后接外部支付时，在回调里再改成已预订
-      await this.memberBalanceService.deductBalance({
-        entityManager,
-        memberId,
-        shopId,
-        amount: savedOrder.amount,
-        bizType: FinanceBizType.HOTEL_ROOM_FEE,
-        bizOrderNo: savedOrder.orderNo,
-        operatorId: null,
-        remark: '酒店预订',
-      });
+      // 5. 余额只扣抵扣后的实付。实付为 0 时不再调余额扣款
+      const payableAmount = orderAmount.minus(pointPlan.amount);
+      if (payableAmount.gt(0)) {
+        await this.memberBalanceService.deductBalance({
+          entityManager,
+          memberId,
+          shopId,
+          amount: toMoneyString(payableAmount),
+          bizType: FinanceBizType.HOTEL_ROOM_FEE,
+          bizOrderNo: savedOrder.orderNo,
+          operatorId: null,
+          remark: '酒店预订',
+        });
+      }
       savedOrder.orderStatus = HotelOrderStatus.BOOKED;
       await entityManager.getRepository(HotelBookingOrder).save(savedOrder);
       await this.notifyService.createMemberMessage(entityManager, {
         shopId,
         memberId,
         title: '酒店预订成功',
-        content: `订单${savedOrder.orderNo}已预订，已扣房费${savedOrder.amount}`,
+        content: `订单${savedOrder.orderNo}已预订，已扣房费${toMoneyString(payableAmount)}`,
       });
+      if (pointPlan.points > 0) {
+        await this.pointLedgerService.consumeForOrder(pointPlan.account, pointPlan.points, '酒店预订积分抵扣');
+      }
       return savedOrder;
     });
   }
@@ -902,6 +921,7 @@ export class HotelService {
     if (!isPositiveMoney(command.price)) {
       throw new BusinessException('房价必须大于0');
     }
+    this.readPointDeductSetting(command.price, command.pointDeductAmount, command.pointDeductPoints, '每晚价格');
   }
 
   /**
@@ -1006,7 +1026,89 @@ export class HotelService {
     hotelRoomType.typeName = command.typeName;
     hotelRoomType.description = this.normalizeRoomTypeDescription(command.description);
     hotelRoomType.price = toMoneyString(command.price);
+    const pointDeduct = this.readPointDeductSetting(command.price, command.pointDeductAmount, command.pointDeductPoints, '每晚价格');
+    hotelRoomType.pointDeductAmount = pointDeduct.amount;
+    hotelRoomType.pointDeductPoints = pointDeduct.points;
     hotelRoomType.status = command.status;
+  }
+
+  /**
+   * 校验单位上的积分抵扣。金额和积分必须同时为 0，或同时有效，且金额不超过单位售价。
+   */
+  private readPointDeductSetting(
+    unitPrice: string | number,
+    pointDeductAmount: string | number | undefined,
+    pointDeductPoints: number | undefined,
+    priceLabel: string,
+  ): { amount: string; points: number } {
+    let amountDecimal: Decimal;
+    try {
+      amountDecimal = new Decimal(isEmpty(pointDeductAmount) ? 0 : pointDeductAmount);
+    } catch {
+      throw new BusinessException('积分可抵扣金额不正确');
+    }
+    const points = isEmpty(pointDeductPoints) ? 0 : pointDeductPoints;
+    if (amountDecimal.isNegative() || amountDecimal.isFinite() !== true) {
+      throw new BusinessException('积分可抵扣金额不正确');
+    }
+    if (isNumber(points) !== true || Number.isInteger(points) !== true || points < 0) {
+      throw new BusinessException('抵扣积分数量不正确');
+    }
+    const amountIsZero = amountDecimal.isZero();
+    const pointsIsZero = points === 0;
+    if (amountIsZero !== pointsIsZero) {
+      throw new BusinessException('积分可抵扣金额和抵扣积分数量需要同时填写');
+    }
+    if (amountIsZero !== true && amountDecimal.greaterThan(new Decimal(unitPrice))) {
+      throw new BusinessException(`积分可抵扣金额不能大于${priceLabel}`);
+    }
+    return { amount: toMoneyString(amountDecimal), points };
+  }
+
+  /**
+   * 按房型每晚配置，算出本单要扣的金额和积分。未选择抵扣时都是 0。
+   */
+  private async buildHotelPointPlan(
+    memberId: string,
+    roomType: HotelRoomType,
+    nightCount: number,
+    usePointDeduct: boolean,
+  ): Promise<{ amount: string; points: number; account: string }> {
+    if (usePointDeduct !== true) {
+      return { amount: '0.00', points: 0, account: '' };
+    }
+    const unitAmount = new Decimal(isEmpty(roomType.pointDeductAmount) ? 0 : roomType.pointDeductAmount);
+    const unitPoints = isEmpty(roomType.pointDeductPoints) ? 0 : roomType.pointDeductPoints;
+    if (unitAmount.gt(0) !== true || unitPoints <= 0) {
+      throw new BusinessException('该房型不支持积分抵扣');
+    }
+    const totalAmount = unitAmount.times(nightCount);
+    const totalPoints = unitPoints * nightCount;
+    const orderAmount = new Decimal(roomType.price).times(nightCount);
+    if (totalAmount.greaterThan(orderAmount)) {
+      throw new BusinessException('积分可抵扣金额不能大于订单金额');
+    }
+    const pointsAccount = await this.readMemberPointAccount(memberId);
+    const balanceView = await this.pointLedgerService.getCurrentBalanceByAccount(pointsAccount);
+    if (Math.trunc(balanceView.balance) < totalPoints) {
+      throw new BusinessException('积分余额不足');
+    }
+    return { amount: toMoneyString(totalAmount), points: totalPoints, account: pointsAccount };
+  }
+
+  /**
+   * 用会员用户名向聊天服务取已绑定的积分账号。
+   */
+  private async readMemberPointAccount(memberId: string): Promise<string> {
+    const memberAccount = await this.memberQueryService.findById(memberId);
+    if (isEmpty(memberAccount) || isEmpty(memberAccount.username)) {
+      throw new BusinessException('未绑定积分账号');
+    }
+    const chatUserProfile = await this.chatUserClient.findByKeyword(memberAccount.username);
+    if (isEmpty(chatUserProfile.pointAccount)) {
+      throw new BusinessException('未绑定积分账号');
+    }
+    return chatUserProfile.pointAccount.trim();
   }
 
   /**
@@ -1045,6 +1147,8 @@ export class HotelService {
       typeName: roomType.typeName,
       description: this.normalizeRoomTypeDescription(roomType.description),
       price: roomType.price,
+      pointDeductAmount: roomType.pointDeductAmount,
+      pointDeductPoints: roomType.pointDeductPoints,
       status: roomType.status,
       roomCount,
       imageList,
@@ -1235,15 +1339,25 @@ export class HotelService {
     }
     bookingOrder.orderStatus = HotelOrderStatus.REFUNDED;
     await entityManager.getRepository(HotelBookingOrder).save(bookingOrder);
-    await this.memberBalanceService.refundBalance({
-      entityManager,
-      memberId: toIdentifier(bookingOrder.memberId),
-      shopId: toIdentifier(bookingOrder.shopId),
-      amount: bookingOrder.amount,
-      bizOrderNo: bookingOrder.orderNo,
-      operatorId,
-      remark: '酒店预订取消退款',
-    });
+    const payableAmount = new Decimal(bookingOrder.amount).minus(isEmpty(bookingOrder.pointDeductAmount) ? 0 : bookingOrder.pointDeductAmount);
+    if (payableAmount.gt(0)) {
+      await this.memberBalanceService.refundBalance({
+        entityManager,
+        memberId: toIdentifier(bookingOrder.memberId),
+        shopId: toIdentifier(bookingOrder.shopId),
+        amount: toMoneyString(payableAmount),
+        bizOrderNo: bookingOrder.orderNo,
+        operatorId,
+        remark: '酒店预订取消退款',
+      });
+    }
+    if (bookingOrder.pointDeductPoints > 0) {
+      if (isEmpty(bookingOrder.memberId)) {
+        throw new BusinessException('订单缺少会员，无法退回积分');
+      }
+      const pointsAccount = await this.readMemberPointAccount(toIdentifier(bookingOrder.memberId));
+      await this.pointLedgerService.refundConsumedPoints(pointsAccount, bookingOrder.pointDeductPoints, '酒店预订取消退回积分');
+    }
   }
 
   /**

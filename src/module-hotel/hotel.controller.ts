@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, ForbiddenException, Get, Param, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Type } from 'class-transformer';
-import { ArrayNotEmpty, IsArray, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { ArrayNotEmpty, IsArray, IsBoolean, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 import { DetailDescriptionLimit, FinanceBizType, HotelRoomStatus, HotelWalkInContact, HotelWalkInNight, ModuleCode, PermissionCode, RecordStatus, ShopImageLimit } from '../common/constants';
 import { PageQueryDto } from '../common/dto/page-query.dto';
 import { CurrentAccount } from '../common/decorators/current-account.decorator';
@@ -67,6 +67,15 @@ export class SaveHotelRoomTypeDto {
 
   @IsNotEmpty()
   price: string | number;
+
+  @IsOptional()
+  pointDeductAmount?: string | number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  pointDeductPoints?: number;
 
   @IsIn(Object.values(RecordStatus))
   status: string;
@@ -246,6 +255,10 @@ export class CreateHotelBookingDto {
   @IsNotEmpty({ message: '请填写联系方式' })
   @MaxLength(HotelWalkInContact.MAX_LENGTH, { message: '联系方式过长' })
   contact: string;
+
+  @IsOptional()
+  @IsBoolean()
+  usePointDeduct?: boolean;
 
   @IsString()
   @IsNotEmpty()

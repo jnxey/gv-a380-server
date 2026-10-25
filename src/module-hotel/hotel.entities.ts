@@ -34,6 +34,12 @@ export class HotelRoomType {
   @Column({ type: 'decimal', precision: 12, scale: 2, transformer: decimalTransformer })
   price: string;
 
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0, transformer: decimalTransformer })
+  pointDeductAmount: string = '0.00';
+
+  @Column({ type: 'int', unsigned: true, default: 0 })
+  pointDeductPoints: number = 0;
+
   @Column({ type: 'varchar', length: 16 })
   status: string;
 
@@ -138,6 +144,12 @@ export class HotelBookingOrder {
 
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0, transformer: decimalTransformer })
   amount: string;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0, transformer: decimalTransformer })
+  pointDeductAmount: string = '0.00';
+
+  @Column({ type: 'int', unsigned: true, default: 0 })
+  pointDeductPoints: number = 0;
 
   @Column({ type: 'varchar', length: 32 })
   orderStatus: string;

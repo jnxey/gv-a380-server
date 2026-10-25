@@ -54,5 +54,6 @@ import { PointSnowflakeService } from './tools/point-snowflake.service';
   ],
   controllers: [PointMerchantController, PointAppController, PointAdminController],
   providers: [PointLedgerService, PointMemberService, PointSnowflakeService],
+  exports: [PointLedgerService],
 })
 export class PointModule {}
