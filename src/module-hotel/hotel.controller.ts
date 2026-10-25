@@ -469,17 +469,17 @@ export class HotelAdminController {
   }
 
   /**
-   * 取消未入住订单。
+   * 取消未入住订单。待支付直接取消；已预订取消并退款。
    */
   @Post('booking-orders/:bookingOrderId/cancel')
   @RequirePermission(PermissionCode.HOTEL_ORDER_CANCEL)
-  cancelBooking(@Param('bookingOrderId') bookingOrderId: string) {
-    return this.hotelService.cancelBooking(bookingOrderId);
+  cancelBooking(@Param('bookingOrderId') bookingOrderId: string, @CurrentAccount() loginAccountContext: LoginAccountContext) {
+    return this.hotelService.cancelBooking(bookingOrderId, loginAccountContext.accountId);
   }
 }
 
 /**
- * 小程序酒店订房。预订不扣款。
+ * 小程序酒店订房。
  */
 @Controller('app/hotel')
 export class HotelAppController {

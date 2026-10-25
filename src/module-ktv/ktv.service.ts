@@ -660,7 +660,7 @@ export class KtvService {
       if (occupiedOrderList.length >= enabledRoomList.length) {
         throw new BusinessException('该时段已订满');
       }
-      // 5. 写入待核销订单，先不分配具体包厢。金额等于每小时价格乘以小时数
+      // 5. 先写入待支付订单占时段，先不分配具体包厢。金额等于每小时价格乘以小时数
       const bookingOrder = new KtvBookingOrder();
       bookingOrder.shopId = shopId;
       bookingOrder.orderNo = createBusinessNo(BusinessNoPrefix.KTV_BOOKING);
@@ -674,10 +674,10 @@ export class KtvService {
       bookingOrder.endTime = bookingRange.endTime;
       bookingOrder.durationHours = durationHours;
       bookingOrder.amount = toMoneyString(new Decimal(ktvRoomType.hourlyPrice).times(durationHours));
-      bookingOrder.orderStatus = KtvOrderStatus.PENDING_VERIFY;
+      bookingOrder.orderStatus = KtvOrderStatus.PENDING_PAY;
       bookingOrder.verifyCode = await this.createUniqueVerifyCode(entityManager);
       const savedOrder = await entityManager.getRepository(KtvBookingOrder).save(bookingOrder);
-      // 6. 调用 core 扣余额。失败会连同订单一起回滚
+      // 6. 本平台余额支付：扣款成功后进入待核销。以后接外部支付时，在回调里再改成待核销
       await this.memberBalanceService.deductBalance({
         entityManager,
         memberId,
@@ -688,6 +688,8 @@ export class KtvService {
         operatorId: null,
         remark: 'KTV包厢预订',
       });
+      savedOrder.orderStatus = KtvOrderStatus.PENDING_VERIFY;
+      await entityManager.getRepository(KtvBookingOrder).save(savedOrder);
       // 7. 通知会员预订结果
       await this.notifyService.createMemberMessage(entityManager, {
         shopId,
@@ -919,11 +921,11 @@ export class KtvService {
   }
 
   /**
-   * 取消已支付且未完成的预订，并通过 core 退回包厢费。
+   * 取消预订。待支付只关单；待核销关单并退回包厢费。
    */
   async cancelBooking(bookingOrderId: string, operatorId: string): Promise<void> {
     await SimOrm.transaction(this.dataSource, async (entityManager) => {
-      // 1. 锁定订单并确认还能退
+      // 1. 锁定订单并确认还能取消
       const bookingOrder = await entityManager
         .getRepository(KtvBookingOrder)
         .createQueryBuilder('bookingOrder')
@@ -937,7 +939,12 @@ export class KtvService {
       if (cancelable !== true) {
         throw new BusinessException('当前状态不能取消');
       }
-      // 2. 先改成已退款，再退余额。任一步失败都会回滚
+      // 2. 待支付尚未扣款，直接取消；待核销已支付，改成已退款并退余额
+      if (bookingOrder.orderStatus === KtvOrderStatus.PENDING_PAY) {
+        bookingOrder.orderStatus = KtvOrderStatus.CANCELLED;
+        await entityManager.getRepository(KtvBookingOrder).save(bookingOrder);
+        return;
+      }
       bookingOrder.orderStatus = KtvOrderStatus.REFUNDED;
       await entityManager.getRepository(KtvBookingOrder).save(bookingOrder);
       await this.memberBalanceService.refundBalance({

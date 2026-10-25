@@ -159,6 +159,9 @@ export class StoreSale {
   @Column({ type: 'varchar', length: 16 })
   payMethod: string;
 
+  @Column({ type: 'varchar', length: 32, default: 'COMPLETED' })
+  saleStatus: string;
+
   @Column({ type: 'decimal', precision: 12, scale: 2, transformer: decimalTransformer })
   amount: string;
 

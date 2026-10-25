@@ -115,6 +115,17 @@ export const StorePayMethod = {
 } as const;
 
 /**
+ * 商铺销售单状态。
+ * PENDING_PAY：已扣库存、尚未完成收款；收款成功后进入 COMPLETED。
+ */
+export const StoreSaleStatus = {
+  PENDING_PAY: 'PENDING_PAY',
+  COMPLETED: 'COMPLETED',
+  CANCELLED: 'CANCELLED',
+  REFUNDED: 'REFUNDED',
+} as const;
+
+/**
  * 商铺一次单据最多的商品行数。
  */
 export const StoreSaleItemLimit = {
@@ -139,8 +150,10 @@ export const FinanceDirection = {
 
 /**
  * KTV 预订订单状态。
+ * PENDING_PAY：已占时段、尚未支付；支付成功后进入 PENDING_VERIFY。
  */
 export const KtvOrderStatus = {
+  PENDING_PAY: 'PENDING_PAY',
   PENDING_VERIFY: 'PENDING_VERIFY',
   VERIFIED: 'VERIFIED',
   COMPLETED: 'COMPLETED',
@@ -149,18 +162,20 @@ export const KtvOrderStatus = {
 } as const;
 
 /**
- * 仍占用包厢时段的 KTV 订单状态。
+ * 仍占用包厢时段的 KTV 订单状态。待支付也占名额，避免超卖。
  */
 export const KtvBookingActiveStatusList = [
+  KtvOrderStatus.PENDING_PAY,
   KtvOrderStatus.PENDING_VERIFY,
   KtvOrderStatus.VERIFIED,
   KtvOrderStatus.COMPLETED,
 ];
 
 /**
- * 允许取消并退款的 KTV 订单状态。
+ * 允许取消的 KTV 订单状态。待支付直接取消；待核销取消并退款。
  */
 export const KtvBookingCancelableStatusList = [
+  KtvOrderStatus.PENDING_PAY,
   KtvOrderStatus.PENDING_VERIFY,
 ];
 
@@ -216,13 +231,24 @@ export const KtvConsumeStatus = {
 
 /**
  * 酒店预订订单状态。
+ * PENDING_PAY：已下单、尚未支付；支付成功后进入 BOOKED。
  */
 export const HotelOrderStatus = {
+  PENDING_PAY: 'PENDING_PAY',
   BOOKED: 'BOOKED',
   CHECKED_IN: 'CHECKED_IN',
   CHECKED_OUT: 'CHECKED_OUT',
   CANCELLED: 'CANCELLED',
+  REFUNDED: 'REFUNDED',
 } as const;
+
+/**
+ * 允许取消的酒店订单状态。待支付直接取消；已预订取消并退款。
+ */
+export const HotelBookingCancelableStatusList = [
+  HotelOrderStatus.PENDING_PAY,
+  HotelOrderStatus.BOOKED,
+];
 
 /**
  * 酒店入住记录状态。

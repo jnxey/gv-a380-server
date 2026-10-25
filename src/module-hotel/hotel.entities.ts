@@ -86,7 +86,7 @@ export class HotelRoom {
 }
 
 /**
- * 酒店预订订单。预订和退房都不扣会员余额，退房时把房费记在订单上。
+ * 酒店预订订单。会员预订先待支付，扣余额后进入已预订。
  */
 @Entity('hotel_booking_order')
 export class HotelBookingOrder {

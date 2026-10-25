@@ -14,6 +14,7 @@ import {
   ShopType,
   StorePayMethod,
   StoreSaleItemLimit,
+  StoreSaleStatus,
   UploadSetting,
 } from '../common/constants';
 import { ShopContext } from '../common/context/shop-context';
@@ -157,6 +158,7 @@ export interface StoreSaleView {
   memberId: string;
   username: string;
   payMethod: string;
+  saleStatus: string;
   amount: string;
   remark: string;
   deliveryAddress: string;
@@ -723,7 +725,7 @@ export class StoreService {
   }
 
   /**
-   * 同一事务里扣库存，会员收款时再扣余额。
+   * 同一事务里先扣库存写入待支付销售单，再完成收款后改为已完成。
    */
   private async createSaleInTransaction(command: {
     shopId: string;
@@ -777,12 +779,13 @@ export class StoreService {
       if (saleAmount.lte(0)) {
         throw new BusinessException('销售金额必须大于0');
       }
-      // 2. 写入销售单和明细
+      // 2. 先写入待支付销售单和明细，并扣库存占货
       const storeSale = new StoreSale();
       storeSale.shopId = command.shopId;
       storeSale.saleNo = createBusinessNo(BusinessNoPrefix.STORE_SALE);
       storeSale.memberId = command.memberId;
       storeSale.payMethod = command.payMethod;
+      storeSale.saleStatus = StoreSaleStatus.PENDING_PAY;
       storeSale.amount = toMoneyString(saleAmount);
       storeSale.operatorId = command.operatorId;
       storeSale.remark = isEmpty(command.remark) ? '' : command.remark.trim();
@@ -793,7 +796,7 @@ export class StoreService {
       }
       await entityManager.getRepository(StoreSaleItem).save(saleItemList);
       await entityManager.getRepository(StoreProduct).save(productList);
-      // 3. 会员余额收款时扣款，现金只留销售单
+      // 3. 会员余额收款时扣款；现金视为当场已收。以后接外部支付时，在回调里再改成已完成
       if (command.payMethod === StorePayMethod.MEMBER) {
         if (isEmpty(command.memberId)) {
           throw new BusinessException('请选择会员');
@@ -809,6 +812,8 @@ export class StoreService {
           remark: isEmpty(savedSale.remark) ? '商铺销售' : savedSale.remark,
         });
       }
+      savedSale.saleStatus = StoreSaleStatus.COMPLETED;
+      await entityManager.getRepository(StoreSale).save(savedSale);
       return (await this.toSaleViewList([savedSale], entityManager))[0];
     });
   }
@@ -1109,6 +1114,7 @@ export class StoreService {
         memberId: isEmpty(sale.memberId) ? '' : toIdentifier(sale.memberId),
         username: isEmpty(memberAccount) ? '' : memberAccount.username,
         payMethod: sale.payMethod,
+        saleStatus: sale.saleStatus,
         amount: sale.amount,
         remark: isEmpty(sale.remark) ? '' : sale.remark,
         deliveryAddress: isEmpty(sale.deliveryAddress) ? '' : sale.deliveryAddress,

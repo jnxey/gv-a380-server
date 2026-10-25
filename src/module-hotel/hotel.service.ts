@@ -8,6 +8,7 @@ import { DataSource, FindOptionsWhere, In, Repository } from 'typeorm';
 import {
   BusinessNoPrefix,
   FinanceBizType,
+  HotelBookingCancelableStatusList,
   HotelBusinessDay,
   HotelOrderStatus,
   HotelRoomStatus,
@@ -496,7 +497,7 @@ export class HotelService {
       // 3. 房费等于每晚价格乘以晚数
       const nightCount = calculateNightCount(command.checkInDate, command.checkOutDate);
       const roomFeeText = toMoneyString(new Decimal(hotelRoomType.price).times(nightCount));
-      // 4. 写入已计价的预订订单
+      // 4. 先写入待支付订单。金额等于每晚价格乘以晚数
       const bookingOrder = new HotelBookingOrder();
       bookingOrder.shopId = shopId;
       bookingOrder.orderNo = createBusinessNo(BusinessNoPrefix.HOTEL_BOOKING);
@@ -508,9 +509,9 @@ export class HotelService {
       bookingOrder.checkInDate = command.checkInDate;
       bookingOrder.checkOutDate = command.checkOutDate;
       bookingOrder.amount = roomFeeText;
-      bookingOrder.orderStatus = HotelOrderStatus.BOOKED;
+      bookingOrder.orderStatus = HotelOrderStatus.PENDING_PAY;
       const savedOrder = await entityManager.getRepository(HotelBookingOrder).save(bookingOrder);
-      // 5. 扣会员余额。失败会连同订单一起回滚
+      // 5. 本平台余额支付：扣款成功后进入已预订。以后接外部支付时，在回调里再改成已预订
       await this.memberBalanceService.deductBalance({
         entityManager,
         memberId,
@@ -521,6 +522,8 @@ export class HotelService {
         operatorId: null,
         remark: '酒店预订',
       });
+      savedOrder.orderStatus = HotelOrderStatus.BOOKED;
+      await entityManager.getRepository(HotelBookingOrder).save(savedOrder);
       await this.notifyService.createMemberMessage(entityManager, {
         shopId,
         memberId,
@@ -796,18 +799,42 @@ export class HotelService {
   }
 
   /**
-   * 取消尚未入住的预订。未扣款，因此不退款。
+   * 取消尚未入住的预订。待支付只关单；已预订关单并退回房费。
    */
-  async cancelBooking(bookingOrderId: string): Promise<void> {
-    const bookingOrder = await this.hotelBookingOrderRepository.findOne({ where: { id: bookingOrderId } });
-    if (isEmpty(bookingOrder)) {
-      throw new BusinessException('订单不存在');
-    }
-    if (bookingOrder.orderStatus !== HotelOrderStatus.BOOKED) {
-      throw new BusinessException('只有未入住的订单可以取消');
-    }
-    bookingOrder.orderStatus = HotelOrderStatus.CANCELLED;
-    await this.hotelBookingOrderRepository.save(bookingOrder);
+  async cancelBooking(bookingOrderId: string, operatorId: string): Promise<void> {
+    await SimOrm.transaction(this.dataSource, async (entityManager) => {
+      // 1. 锁定订单并确认还能取消
+      const bookingOrder = await entityManager
+        .getRepository(HotelBookingOrder)
+        .createQueryBuilder('bookingOrder')
+        .setLock('pessimistic_write')
+        .where('bookingOrder.id = :bookingOrderId', { bookingOrderId })
+        .getOne();
+      if (isEmpty(bookingOrder)) {
+        throw new BusinessException('订单不存在');
+      }
+      const cancelable = HotelBookingCancelableStatusList.some((orderStatus) => orderStatus === bookingOrder.orderStatus);
+      if (cancelable !== true) {
+        throw new BusinessException('只有未入住的订单可以取消');
+      }
+      // 2. 待支付尚未扣款，直接取消；已预订已支付，改成已退款并退余额
+      if (bookingOrder.orderStatus === HotelOrderStatus.PENDING_PAY) {
+        bookingOrder.orderStatus = HotelOrderStatus.CANCELLED;
+        await entityManager.getRepository(HotelBookingOrder).save(bookingOrder);
+        return;
+      }
+      bookingOrder.orderStatus = HotelOrderStatus.REFUNDED;
+      await entityManager.getRepository(HotelBookingOrder).save(bookingOrder);
+      await this.memberBalanceService.refundBalance({
+        entityManager,
+        memberId: toIdentifier(bookingOrder.memberId),
+        shopId: toIdentifier(bookingOrder.shopId),
+        amount: bookingOrder.amount,
+        bizOrderNo: bookingOrder.orderNo,
+        operatorId,
+        remark: '酒店预订取消退款',
+      });
+    });
   }
 
   /**
