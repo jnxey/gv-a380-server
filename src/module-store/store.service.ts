@@ -721,13 +721,19 @@ export class StoreService {
    */
   async startDelivery(saleId: string, command: StartStoreDeliveryCommand): Promise<StoreSaleView> {
     const shopId = await this.requireEnabledStoreShop();
-    const courierName = this.readRequiredDeliveryText(command.courierName, StoreDeliveryField.COURIER_NAME_MAX_LENGTH, '请填写送货人', '送货人过长');
-    const courierContact = this.readRequiredDeliveryText(
-      command.courierContact,
-      StoreDeliveryField.COURIER_CONTACT_MAX_LENGTH,
-      '请填写联系方式',
-      '联系方式过长',
-    );
+    const enabledShop = await this.shopService.findEnabledShop(shopId, ShopType.STORE);
+    const deliveryInfoOptional = enabledShop.requireRoomNo === 1;
+    const courierName = deliveryInfoOptional
+      ? this.readOptionalDeliveryText(command.courierName, StoreDeliveryField.COURIER_NAME_MAX_LENGTH, '送货人过长')
+      : this.readRequiredDeliveryText(command.courierName, StoreDeliveryField.COURIER_NAME_MAX_LENGTH, '请填写送货人', '送货人过长');
+    const courierContact = deliveryInfoOptional
+      ? this.readOptionalDeliveryText(command.courierContact, StoreDeliveryField.COURIER_CONTACT_MAX_LENGTH, '联系方式过长')
+      : this.readRequiredDeliveryText(
+          command.courierContact,
+          StoreDeliveryField.COURIER_CONTACT_MAX_LENGTH,
+          '请填写联系方式',
+          '联系方式过长',
+        );
     const deliveryNo = this.readOptionalDeliveryText(command.deliveryNo, StoreDeliveryField.DELIVERY_NO_MAX_LENGTH, '送货号过长');
     const deliveryRemark = this.readOptionalDeliveryText(command.deliveryRemark, StoreDeliveryField.REMARK_MAX_LENGTH, '送货备注过长');
     return SimOrm.transaction(this.dataSource, async (entityManager) => {

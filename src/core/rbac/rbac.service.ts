@@ -30,6 +30,7 @@ export interface BoundShopView {
   shopName: string;
   shopType: string;
   timeZone: string;
+  requireRoomNo: boolean;
 }
 
 /**
@@ -109,6 +110,7 @@ export class RbacService {
       shopName: shop.shopName,
       shopType: shop.shopType,
       timeZone: isEmpty(shop.timeZone) ? '' : shop.timeZone,
+      requireRoomNo: shop.requireRoomNo === 1,
     }));
   }
 

@@ -240,16 +240,14 @@ export class CreateAppStoreSaleDto {
 }
 
 /**
- * 收银台开始送货。送货号和备注可以不填。
+ * 收银台开始送货。送货号和备注可以不填。必带房间号的门店，送货人和联系方式也可以不填。
  */
 export class StartStoreDeliveryDto {
   @IsString()
-  @IsNotEmpty({ message: '请填写送货人' })
   @MaxLength(StoreDeliveryField.COURIER_NAME_MAX_LENGTH, { message: '送货人过长' })
   courierName: string;
 
   @IsString()
-  @IsNotEmpty({ message: '请填写联系方式' })
   @MaxLength(StoreDeliveryField.COURIER_CONTACT_MAX_LENGTH, { message: '联系方式过长' })
   courierContact: string;
 
