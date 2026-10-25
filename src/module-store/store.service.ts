@@ -7,6 +7,7 @@ import Decimal from 'decimal.js';
 import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import {
   BusinessNoPrefix,
+  DetailDescriptionLimit,
   FinanceBizType,
   RecordStatus,
   ShopImageLimit,
@@ -43,6 +44,7 @@ export interface SaveStoreProductCategoryCommand {
 export interface SaveStoreProductCommand {
   categoryId: string;
   productName: string;
+  description?: string;
   barcode: string;
   salePrice: string | number;
   costPrice: string | number;
@@ -123,6 +125,7 @@ export interface StoreProductView {
   categoryId: string;
   categoryName: string;
   productName: string;
+  description: string;
   barcode: string;
   salePrice: string;
   costPrice: string;
@@ -427,6 +430,10 @@ export class StoreService {
     if (isEmpty(productName)) {
       throw new BusinessException('请填写商品名称');
     }
+    const descriptionText = isEmpty(command.description) ? '' : command.description.trim();
+    if (descriptionText.length > DetailDescriptionLimit.MAX_LENGTH) {
+      throw new BusinessException(`详细描述不能超过${DetailDescriptionLimit.MAX_LENGTH}字`);
+    }
     const barcode = isEmpty(command.barcode) ? '' : command.barcode.trim();
     if (isEmpty(barcode)) {
       throw new BusinessException('请填写条码');
@@ -444,6 +451,7 @@ export class StoreService {
     storeProduct.shopId = shopId;
     storeProduct.categoryId = toIdentifier(categoryRow.id);
     storeProduct.productName = productName;
+    storeProduct.description = descriptionText;
     storeProduct.barcode = barcode;
     storeProduct.salePrice = toMoneyString(command.salePrice);
     storeProduct.costPrice = costPriceText;
@@ -499,6 +507,10 @@ export class StoreService {
     if (isEmpty(productName)) {
       throw new BusinessException('请填写商品名称');
     }
+    const descriptionText = isEmpty(command.description) ? '' : command.description.trim();
+    if (descriptionText.length > DetailDescriptionLimit.MAX_LENGTH) {
+      throw new BusinessException(`详细描述不能超过${DetailDescriptionLimit.MAX_LENGTH}字`);
+    }
     const barcode = isEmpty(command.barcode) ? '' : command.barcode.trim();
     if (isEmpty(barcode)) {
       throw new BusinessException('请填写条码');
@@ -514,6 +526,7 @@ export class StoreService {
     }
     storeProduct.categoryId = toIdentifier(categoryRow.id);
     storeProduct.productName = productName;
+    storeProduct.description = descriptionText;
     storeProduct.barcode = barcode;
     storeProduct.salePrice = toMoneyString(command.salePrice);
     storeProduct.costPrice = costPriceText;
@@ -1049,6 +1062,7 @@ export class StoreService {
       categoryId: toIdentifier(storeProduct.categoryId),
       categoryName: isEmpty(categoryName) ? '' : categoryName,
       productName: storeProduct.productName,
+      description: isEmpty(storeProduct.description) ? '' : storeProduct.description,
       barcode: isEmpty(storeProduct.barcode) ? '' : storeProduct.barcode,
       salePrice: storeProduct.salePrice,
       costPrice: storeProduct.costPrice,

@@ -42,6 +42,9 @@ export class StoreProduct {
   @Column({ type: 'varchar', length: 64 })
   productName: string;
 
+  @Column({ type: 'varchar', length: 500, default: '' })
+  description: string;
+
   @Column({ type: 'varchar', length: 32, default: '' })
   barcode: string;
 

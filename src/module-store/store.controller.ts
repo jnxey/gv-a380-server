@@ -9,10 +9,11 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
-import { FinanceBizType, ModuleCode, PermissionCode, RecordStatus, ShopImageLimit, StorePayMethod } from '../common/constants';
+import { DetailDescriptionLimit, FinanceBizType, ModuleCode, PermissionCode, RecordStatus, ShopImageLimit, StorePayMethod } from '../common/constants';
 import { ShopContext } from '../common/context/shop-context';
 import { CurrentAccount } from '../common/decorators/current-account.decorator';
 import { RequireModule, RequirePermission, RequiresShop } from '../common/decorators/auth.decorators';
@@ -55,6 +56,11 @@ export class SaveStoreProductDto {
   @IsString()
   @IsNotEmpty()
   productName: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(DetailDescriptionLimit.MAX_LENGTH)
+  description?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -357,6 +363,7 @@ export class StoreAdminController {
     return this.storeService.createProduct({
       categoryId: saveStoreProductDto.categoryId,
       productName: saveStoreProductDto.productName,
+      description: saveStoreProductDto.description || '',
       barcode: saveStoreProductDto.barcode,
       salePrice: saveStoreProductDto.salePrice,
       costPrice: saveStoreProductDto.costPrice,
@@ -383,6 +390,7 @@ export class StoreAdminController {
     return this.storeService.updateProduct(productId, {
       categoryId: saveStoreProductDto.categoryId,
       productName: saveStoreProductDto.productName,
+      description: saveStoreProductDto.description || '',
       barcode: saveStoreProductDto.barcode,
       salePrice: saveStoreProductDto.salePrice,
       costPrice: saveStoreProductDto.costPrice,

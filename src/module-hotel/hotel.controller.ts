@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, ForbiddenException, Get, Param, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ArrayNotEmpty, IsArray, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
-import { FinanceBizType, HotelRoomStatus, HotelWalkInContact, HotelWalkInNight, ModuleCode, PermissionCode, RecordStatus, ShopImageLimit } from '../common/constants';
+import { DetailDescriptionLimit, FinanceBizType, HotelRoomStatus, HotelWalkInContact, HotelWalkInNight, ModuleCode, PermissionCode, RecordStatus, ShopImageLimit } from '../common/constants';
 import { PageQueryDto } from '../common/dto/page-query.dto';
 import { CurrentAccount } from '../common/decorators/current-account.decorator';
 import { ShopContext } from '../common/context/shop-context';
@@ -18,6 +18,11 @@ export class SaveHotelRoomTypeDto {
   @IsString()
   @IsNotEmpty()
   typeName: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(DetailDescriptionLimit.MAX_LENGTH)
+  description?: string;
 
   @IsNotEmpty()
   price: string | number;

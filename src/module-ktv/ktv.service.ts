@@ -7,6 +7,7 @@ import Decimal from 'decimal.js';
 import { DataSource, EntityManager, FindOptionsWhere, In, Repository, SelectQueryBuilder } from 'typeorm';
 import {
   BusinessNoPrefix,
+  DetailDescriptionLimit,
   FinanceBizType,
   KtvBookingActiveStatusList,
   KtvBookingCancelableStatusList,
@@ -63,6 +64,7 @@ export interface CreateKtvBookingCommand {
  */
 export interface SaveKtvRoomTypeCommand {
   typeName: string;
+  description?: string;
   hourlyPrice: string | number;
   status: string;
 }
@@ -91,6 +93,7 @@ export interface KtvRoomTypeView {
   id: string;
   shopId: string;
   typeName: string;
+  description: string;
   hourlyPrice: string;
   status: string;
   /** 挂在该类型下的包厢数量。 */
@@ -991,6 +994,10 @@ export class KtvService {
     if (isEmpty(command.typeName)) {
       throw new BusinessException('包厢类型名称不能为空');
     }
+    const descriptionText = isEmpty(command.description) ? '' : command.description.trim();
+    if (descriptionText.length > DetailDescriptionLimit.MAX_LENGTH) {
+      throw new BusinessException(`详细描述不能超过${DetailDescriptionLimit.MAX_LENGTH}字`);
+    }
     if (!isPositiveMoney(command.hourlyPrice)) {
       throw new BusinessException('每小时价格必须大于0');
     }
@@ -1064,6 +1071,7 @@ export class KtvService {
    */
   private fillRoomType(ktvRoomType: KtvRoomType, command: SaveKtvRoomTypeCommand): void {
     ktvRoomType.typeName = command.typeName;
+    ktvRoomType.description = isEmpty(command.description) ? '' : command.description.trim();
     ktvRoomType.hourlyPrice = toMoneyString(command.hourlyPrice);
     ktvRoomType.status = command.status;
   }
@@ -1102,6 +1110,7 @@ export class KtvService {
       id: toIdentifier(roomType.id),
       shopId: toIdentifier(roomType.shopId),
       typeName: roomType.typeName,
+      description: isEmpty(roomType.description) ? '' : roomType.description,
       hourlyPrice: roomType.hourlyPrice,
       status: roomType.status,
       roomCount,

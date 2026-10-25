@@ -7,6 +7,7 @@ import Decimal from 'decimal.js';
 import { DataSource, EntityManager, FindOptionsWhere, In, Repository } from 'typeorm';
 import {
   BusinessNoPrefix,
+  DetailDescriptionLimit,
   FinanceBizType,
   HotelBookingCancelableStatusList,
   HotelBusinessDay,
@@ -69,6 +70,7 @@ export interface CreateHotelBookingCommand {
  */
 export interface SaveHotelRoomTypeCommand {
   typeName: string;
+  description?: string;
   price: string | number;
   status: string;
 }
@@ -97,6 +99,7 @@ export interface HotelRoomTypeView {
   id: string;
   shopId: string;
   typeName: string;
+  description: string;
   price: string;
   status: string;
   /** 挂在该房型下的房间数量。 */
@@ -842,6 +845,10 @@ export class HotelService {
     if (!isOneOf(command.status, Object.values(RecordStatus))) {
       throw new BusinessException('房型状态不正确');
     }
+    const descriptionText = isEmpty(command.description) ? '' : command.description.trim();
+    if (descriptionText.length > DetailDescriptionLimit.MAX_LENGTH) {
+      throw new BusinessException(`详细描述不能超过${DetailDescriptionLimit.MAX_LENGTH}字`);
+    }
     if (!isPositiveMoney(command.price)) {
       throw new BusinessException('房价必须大于0');
     }
@@ -912,6 +919,7 @@ export class HotelService {
    */
   private fillRoomType(hotelRoomType: HotelRoomType, command: SaveHotelRoomTypeCommand): void {
     hotelRoomType.typeName = command.typeName;
+    hotelRoomType.description = isEmpty(command.description) ? '' : command.description.trim();
     hotelRoomType.price = toMoneyString(command.price);
     hotelRoomType.status = command.status;
   }
@@ -950,6 +958,7 @@ export class HotelService {
       id: toIdentifier(roomType.id),
       shopId: toIdentifier(roomType.shopId),
       typeName: roomType.typeName,
+      description: isEmpty(roomType.description) ? '' : roomType.description,
       price: roomType.price,
       status: roomType.status,
       roomCount,

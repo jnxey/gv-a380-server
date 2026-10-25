@@ -15,6 +15,9 @@ export class HotelRoomType {
   @Column({ type: 'varchar', length: 64 })
   typeName: string;
 
+  @Column({ type: 'varchar', length: 500, default: '' })
+  description: string;
+
   @Column({ type: 'decimal', precision: 12, scale: 2, transformer: decimalTransformer })
   price: string;
 

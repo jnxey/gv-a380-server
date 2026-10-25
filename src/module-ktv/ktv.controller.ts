@@ -2,7 +2,7 @@ import { Body, Controller, Delete, ForbiddenException, Get, Param, Post, Put, Qu
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Type } from 'class-transformer';
 import { ArrayNotEmpty, IsArray, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
-import { HotelWalkInContact, KtvBookingHour, KtvOccupyDuration, KtvOrderStatus, KtvPendingVerifyWindow, KtvRoomStatus, ModuleCode, PermissionCode, RecordStatus, ShopImageLimit } from '../common/constants';
+import { DetailDescriptionLimit, HotelWalkInContact, KtvBookingHour, KtvOccupyDuration, KtvOrderStatus, KtvPendingVerifyWindow, KtvRoomStatus, ModuleCode, PermissionCode, RecordStatus, ShopImageLimit } from '../common/constants';
 import { PageQueryDto } from '../common/dto/page-query.dto';
 import { CurrentAccount } from '../common/decorators/current-account.decorator';
 import { ShopContext } from '../common/context/shop-context';
@@ -19,6 +19,11 @@ export class SaveKtvRoomTypeDto {
   @IsString()
   @IsNotEmpty()
   typeName: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(DetailDescriptionLimit.MAX_LENGTH)
+  description?: string;
 
   @IsNotEmpty()
   hourlyPrice: string | number;

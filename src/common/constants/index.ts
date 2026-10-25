@@ -266,6 +266,13 @@ export const ShopReviewLimit = {
 } as const;
 
 /**
+ * 包厢类型、房型、商品详细描述上限。
+ */
+export const DetailDescriptionLimit = {
+  MAX_LENGTH: 500,
+} as const;
+
+/**
  * 允许取消的酒店订单状态。待支付直接取消；已预订取消并退款。
  */
 export const HotelBookingCancelableStatusList = [
