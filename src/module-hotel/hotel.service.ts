@@ -142,6 +142,8 @@ export interface HotelBookingOrderView {
   checkInDate: string;
   checkOutDate: string;
   amount: string;
+  pointDeductAmount: string;
+  pointDeductPoints: number;
   orderStatus: string;
   stayStatus: string;
   canCancel: boolean;
@@ -1427,6 +1429,8 @@ export class HotelService {
         checkInDate: String(bookingOrder.checkInDate).slice(0, 10),
         checkOutDate: String(bookingOrder.checkOutDate).slice(0, 10),
         amount: bookingOrder.amount,
+        pointDeductAmount: isEmpty(bookingOrder.pointDeductAmount) ? '0.00' : bookingOrder.pointDeductAmount,
+        pointDeductPoints: isEmpty(bookingOrder.pointDeductPoints) ? 0 : bookingOrder.pointDeductPoints,
         orderStatus: bookingOrder.orderStatus,
         stayStatus: isEmpty(stayRecord) ? '' : stayRecord.stayStatus,
         canCancel,

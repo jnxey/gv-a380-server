@@ -139,6 +139,8 @@ export interface KtvBookingOrderView {
   endTime: string;
   durationHours: number;
   amount: string;
+  pointDeductAmount: string;
+  pointDeductPoints: number;
   orderStatus: string;
   verifyCode: string;
   canCancel: boolean;
@@ -1681,6 +1683,8 @@ export class KtvService {
         endTime: String(bookingOrder.endTime).slice(0, 8),
         durationHours: bookingOrder.durationHours,
         amount: bookingOrder.amount,
+        pointDeductAmount: isEmpty(bookingOrder.pointDeductAmount) ? '0.00' : bookingOrder.pointDeductAmount,
+        pointDeductPoints: isEmpty(bookingOrder.pointDeductPoints) ? 0 : bookingOrder.pointDeductPoints,
         orderStatus: bookingOrder.orderStatus,
         verifyCode: bookingOrder.verifyCode,
         canCancel,
