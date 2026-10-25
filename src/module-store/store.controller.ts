@@ -4,6 +4,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayNotEmpty,
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsNotEmpty,
@@ -13,7 +14,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { DetailDescriptionLimit, FinanceBizType, HotelWalkInContact, ModuleCode, PermissionCode, RecordStatus, ShopImageLimit, StoreDeliveryField, StorePayMethod } from '../common/constants';
+import { DetailDescriptionLimit, FinanceBizType, HotelWalkInContact, ModuleCode, PermissionCode, QuickProductFlag, RecordStatus, ShopImageLimit, StoreDeliveryField, StorePayMethod } from '../common/constants';
 import { ShopContext } from '../common/context/shop-context';
 import { CurrentAccount } from '../common/decorators/current-account.decorator';
 import { RequireModule, RequirePermission, RequiresShop } from '../common/decorators/auth.decorators';
@@ -81,6 +82,9 @@ export class SaveStoreProductDto {
 
   @IsNotEmpty()
   costPrice: string | number;
+
+  @IsBoolean()
+  quickProduct: boolean;
 
   @IsIn(Object.values(RecordStatus))
   status: string;
@@ -194,6 +198,19 @@ export class StoreBillQueryDto extends PageQueryDto {
 }
 
 /**
+ * 后台销售单查询。时间按创建时间，都不传则不限。
+ */
+export class StoreSaleQueryDto extends PageQueryDto {
+  @IsOptional()
+  @IsString()
+  startDate?: string;
+
+  @IsOptional()
+  @IsString()
+  endDate?: string;
+}
+
+/**
  * 商品分页查询。
  */
 export class StoreProductQueryDto extends PageQueryDto {
@@ -204,6 +221,10 @@ export class StoreProductQueryDto extends PageQueryDto {
   @IsOptional()
   @IsString()
   categoryId?: string;
+
+  @IsOptional()
+  @IsIn([QuickProductFlag.QUERY_ONLY])
+  quickProduct?: string;
 }
 
 /**
@@ -404,6 +425,7 @@ export class StoreAdminController {
       storeProductQueryDto.categoryId || '',
       Number(storeProductQueryDto.page),
       Number(storeProductQueryDto.pageSize),
+      storeProductQueryDto.quickProduct === QuickProductFlag.QUERY_ONLY,
     );
   }
 
@@ -420,6 +442,7 @@ export class StoreAdminController {
       barcode: saveStoreProductDto.barcode,
       salePrice: saveStoreProductDto.salePrice,
       costPrice: saveStoreProductDto.costPrice,
+      quickProduct: saveStoreProductDto.quickProduct,
       status: saveStoreProductDto.status,
     });
   }
@@ -447,6 +470,7 @@ export class StoreAdminController {
       barcode: saveStoreProductDto.barcode,
       salePrice: saveStoreProductDto.salePrice,
       costPrice: saveStoreProductDto.costPrice,
+      quickProduct: saveStoreProductDto.quickProduct,
       status: saveStoreProductDto.status,
     });
   }
@@ -498,8 +522,22 @@ export class StoreAdminController {
    */
   @Get('sales')
   @RequirePermission(PermissionCode.STORE_SALE_QUERY)
-  pageSales(@Query() pageQueryDto: PageQueryDto) {
-    return this.storeService.pageSales(Number(pageQueryDto.page), Number(pageQueryDto.pageSize));
+  pageSales(@Query() storeSaleQueryDto: StoreSaleQueryDto) {
+    return this.storeService.pageSales(
+      Number(storeSaleQueryDto.page),
+      Number(storeSaleQueryDto.pageSize),
+      storeSaleQueryDto.startDate || '',
+      storeSaleQueryDto.endDate || '',
+    );
+  }
+
+  /**
+   * 查询当前门店最近的扫码付款，供收银台到账提示。不含商铺销售，避免收银台自己收款再报一次。
+   */
+  @Get('payment-notices')
+  listPaymentNotices(@CurrentAccount() loginAccountContext: LoginAccountContext) {
+    this.assertCashierPermission(loginAccountContext);
+    return this.financeBillService.listRecentPaymentNotices([FinanceBizType.SHOP_SCAN_PAY]);
   }
 
   /**

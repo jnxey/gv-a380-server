@@ -128,6 +128,14 @@ export class KtvBookingQueryDto extends PageQueryDto {
   @IsInt()
   @IsIn([KtvPendingVerifyWindow.HOURS])
   recentHours?: number;
+
+  @IsOptional()
+  @IsString()
+  startDate?: string;
+
+  @IsOptional()
+  @IsString()
+  endDate?: string;
 }
 
 /**
@@ -465,6 +473,8 @@ export class KtvAdminController {
       ktvBookingQueryDto.recentHours,
       ktvBookingQueryDto.page,
       ktvBookingQueryDto.pageSize,
+      ktvBookingQueryDto.startDate || '',
+      ktvBookingQueryDto.endDate || '',
     );
   }
 

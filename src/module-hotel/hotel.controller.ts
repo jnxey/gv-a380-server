@@ -202,6 +202,19 @@ export class HotelBillQueryDto extends PageQueryDto {
 }
 
 /**
+ * 后台酒店订单查询。时间按创建时间，都不传则不限。
+ */
+export class HotelBookingQueryDto extends PageQueryDto {
+  @IsOptional()
+  @IsString()
+  startDate?: string;
+
+  @IsOptional()
+  @IsString()
+  endDate?: string;
+}
+
+/**
  * 小程序预订酒店。
  */
 export class CreateHotelBookingDto {
@@ -483,8 +496,13 @@ export class HotelAdminController {
    */
   @Get('booking-orders')
   @RequirePermission(PermissionCode.HOTEL_ORDER_QUERY)
-  pageBookingOrders(@Query() pageQueryDto: PageQueryDto) {
-    return this.hotelService.pageBookingOrders(pageQueryDto.page, pageQueryDto.pageSize);
+  pageBookingOrders(@Query() hotelBookingQueryDto: HotelBookingQueryDto) {
+    return this.hotelService.pageBookingOrders(
+      hotelBookingQueryDto.page,
+      hotelBookingQueryDto.pageSize,
+      hotelBookingQueryDto.startDate || '',
+      hotelBookingQueryDto.endDate || '',
+    );
   }
 
   /**

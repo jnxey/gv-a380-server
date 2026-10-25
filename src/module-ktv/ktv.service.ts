@@ -4,7 +4,7 @@ import { join } from 'path';
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import Decimal from 'decimal.js';
-import { DataSource, EntityManager, FindOptionsWhere, In, Repository, SelectQueryBuilder } from 'typeorm';
+import { DataSource, EntityManager, FindOptionsWhere, In, Repository, SelectQueryBuilder, Between } from 'typeorm';
 import {
   BusinessNoPrefix,
   DetailDescriptionLimit,
@@ -142,6 +142,9 @@ export interface KtvBookingOrderView {
 /**
  * KTV 包厢、预订、核销、店内消费和取消退款。
  */
+/** 订单创建时间筛选只接受年月日。 */
+const OrderDateTextPattern = /^\d{4}-\d{2}-\d{2}$/;
+
 @Injectable()
 export class KtvService {
   constructor(
@@ -740,6 +743,30 @@ export class KtvService {
   }
 
   /**
+   * 把开始、结束日期收成当天的起止时间。都不传则不限时间。
+   */
+  private resolveOrderTimeRange(startDate: string, endDate: string): { startAt: string; endAt: string } | null {
+    const cleanedStartDate = isEmpty(startDate) ? '' : startDate.trim();
+    const cleanedEndDate = isEmpty(endDate) ? '' : endDate.trim();
+    if (isEmpty(cleanedStartDate) && isEmpty(cleanedEndDate)) {
+      return null;
+    }
+    if (isEmpty(cleanedStartDate) || isEmpty(cleanedEndDate)) {
+      throw new BusinessException('请选择完整的时间范围');
+    }
+    if (OrderDateTextPattern.test(cleanedStartDate) !== true || OrderDateTextPattern.test(cleanedEndDate) !== true) {
+      throw new BusinessException('时间范围不正确');
+    }
+    if (cleanedEndDate < cleanedStartDate) {
+      throw new BusinessException('结束日期不能早于开始日期');
+    }
+    return {
+      startAt: `${cleanedStartDate} 00:00:00`,
+      endAt: `${cleanedEndDate} 23:59:59`,
+    };
+  }
+
+  /**
    * 后台分页查询当前门店预订订单。传入订单状态时只查该状态。传入近期小时数时，只留开唱时间落在现在前后这个小时数内的订单。
    */
   async pageBookingOrders(
@@ -748,6 +775,8 @@ export class KtvService {
     recentHours: number | undefined,
     pageValue: unknown,
     pageSizeValue: unknown,
+    startDate: string,
+    endDate: string,
   ): Promise<PageResult<KtvBookingOrderView>> {
     const pageResult = resolvePage(pageValue, pageSizeValue);
     if (isEmpty(recentHours)) {
@@ -757,6 +786,10 @@ export class KtvService {
       }
       if (!isEmpty(orderStatus)) {
         whereCondition.orderStatus = orderStatus;
+      }
+      const orderTimeRange = this.resolveOrderTimeRange(startDate, endDate);
+      if (orderTimeRange !== null) {
+        whereCondition.createdAt = Between(orderTimeRange.startAt, orderTimeRange.endAt);
       }
       const [bookingOrderList, total] = await this.ktvBookingOrderRepository.findAndCount({
         where: whereCondition,

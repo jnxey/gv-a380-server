@@ -4,7 +4,7 @@ import { join } from 'path';
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import Decimal from 'decimal.js';
-import { DataSource, EntityManager, FindOptionsWhere, In, Repository } from 'typeorm';
+import { DataSource, EntityManager, FindOptionsWhere, In, Repository, Between } from 'typeorm';
 import {
   BusinessNoPrefix,
   DetailDescriptionLimit,
@@ -144,6 +144,9 @@ export interface HotelBookingOrderView {
 /**
  * 酒店房型、房间、预订、入住、续住和退房。
  */
+/** 订单创建时间筛选只接受年月日。 */
+const OrderDateTextPattern = /^\d{4}-\d{2}-\d{2}$/;
+
 @Injectable()
 export class HotelService {
   constructor(
@@ -541,11 +544,41 @@ export class HotelService {
   }
 
   /**
+   * 把开始、结束日期收成当天的起止时间。都不传则不限时间。
+   */
+  private resolveOrderTimeRange(startDate: string, endDate: string): { startAt: string; endAt: string } | null {
+    const cleanedStartDate = isEmpty(startDate) ? '' : startDate.trim();
+    const cleanedEndDate = isEmpty(endDate) ? '' : endDate.trim();
+    if (isEmpty(cleanedStartDate) && isEmpty(cleanedEndDate)) {
+      return null;
+    }
+    if (isEmpty(cleanedStartDate) || isEmpty(cleanedEndDate)) {
+      throw new BusinessException('请选择完整的时间范围');
+    }
+    if (OrderDateTextPattern.test(cleanedStartDate) !== true || OrderDateTextPattern.test(cleanedEndDate) !== true) {
+      throw new BusinessException('时间范围不正确');
+    }
+    if (cleanedEndDate < cleanedStartDate) {
+      throw new BusinessException('结束日期不能早于开始日期');
+    }
+    return {
+      startAt: `${cleanedStartDate} 00:00:00`,
+      endAt: `${cleanedEndDate} 23:59:59`,
+    };
+  }
+
+  /**
    * 后台分页查询当前门店酒店订单。
    */
-  async pageBookingOrders(pageValue: unknown, pageSizeValue: unknown): Promise<PageResult<HotelBookingOrderView>> {
+  async pageBookingOrders(pageValue: unknown, pageSizeValue: unknown, startDate: string, endDate: string): Promise<PageResult<HotelBookingOrderView>> {
     const pageResult = resolvePage(pageValue, pageSizeValue);
+    const whereCondition: FindOptionsWhere<HotelBookingOrder> = {};
+    const orderTimeRange = this.resolveOrderTimeRange(startDate, endDate);
+    if (orderTimeRange !== null) {
+      whereCondition.createdAt = Between(orderTimeRange.startAt, orderTimeRange.endAt);
+    }
     const [bookingOrderList, total] = await this.hotelBookingOrderRepository.findAndCount({
+      where: whereCondition,
       order: { id: 'DESC' },
       skip: pageResult.skip,
       take: pageResult.pageSize,

@@ -67,6 +67,9 @@ export class StoreProduct {
   @Column({ type: 'int', unsigned: true, default: 0 })
   sortOrder: number;
 
+  @Column({ type: 'tinyint', width: 1, default: 0 })
+  quickProduct: number = 0;
+
   @Column({ type: 'varchar', length: 16 })
   status: string;
 

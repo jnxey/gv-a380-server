@@ -141,6 +141,15 @@ export const StoreDeliveryField = {
 } as const;
 
 /**
+ * 快捷商品。库里用 0/1，列表查询用 ONLY 表示只看快捷商品。
+ */
+export const QuickProductFlag = {
+  YES: 1,
+  NO: 0,
+  QUERY_ONLY: '1',
+} as const;
+
+/**
  * 商铺一次单据最多的商品行数。
  */
 export const StoreSaleItemLimit = {

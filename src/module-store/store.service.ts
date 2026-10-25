@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto';
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import Decimal from 'decimal.js';
-import { DataSource, EntityManager, In, Repository } from 'typeorm';
+import { DataSource, EntityManager, FindOptionsWhere, In, Repository, Between } from 'typeorm';
 import {
   BusinessNoPrefix,
   DetailDescriptionLimit,
@@ -18,6 +18,7 @@ import {
   StoreDeliveryField,
   StoreSaleItemLimit,
   StoreSaleStatus,
+  QuickProductFlag,
   UploadSetting,
 } from '../common/constants';
 import { ShopContext } from '../common/context/shop-context';
@@ -50,6 +51,7 @@ export interface SaveStoreProductCommand {
   barcode: string;
   salePrice: string | number;
   costPrice: string | number;
+  quickProduct: boolean;
   status: string;
 }
 
@@ -144,6 +146,7 @@ export interface StoreProductView {
   salePrice: string;
   costPrice: string;
   stockQuantity: number;
+  quickProduct: boolean;
   status: string;
   imageList: StoreProductImageView[];
 }
@@ -198,6 +201,9 @@ export interface StoreSaleView {
 /**
  * 商铺进销存与收银。
  */
+/** 订单创建时间筛选只接受年月日。 */
+const OrderDateTextPattern = /^\d{4}-\d{2}-\d{2}$/;
+
 @Injectable()
 export class StoreService {
   constructor(
@@ -393,7 +399,13 @@ export class StoreService {
   /**
    * 分页查询当前门店商品。
    */
-  async pageProducts(keyword: string, categoryId: string, page: number, pageSize: number): Promise<PageResult<StoreProductView>> {
+  async pageProducts(
+    keyword: string,
+    categoryId: string,
+    page: number,
+    pageSize: number,
+    quickProductOnly: boolean,
+  ): Promise<PageResult<StoreProductView>> {
     const shopId = await this.requireEnabledStoreShop();
     const pageSetting = resolvePage(page, pageSize);
     const queryBuilder = this.storeProductRepository.createQueryBuilder('storeProduct').where('storeProduct.shopId = :shopId', { shopId });
@@ -405,6 +417,9 @@ export class StoreService {
     }
     if (isEmpty(categoryId) !== true) {
       queryBuilder.andWhere('storeProduct.categoryId = :categoryId', { categoryId: toIdentifier(categoryId) });
+    }
+    if (quickProductOnly === true) {
+      queryBuilder.andWhere('storeProduct.quickProduct = :quickProduct', { quickProduct: QuickProductFlag.YES });
     }
     queryBuilder.orderBy('storeProduct.sortOrder', 'ASC').addOrderBy('storeProduct.id', 'ASC');
     const total = await queryBuilder.getCount();
@@ -477,6 +492,7 @@ export class StoreService {
     storeProduct.costPrice = costPriceText;
     storeProduct.stockQuantity = 0;
     storeProduct.sortOrder = await this.nextProductSortOrder(shopId);
+    storeProduct.quickProduct = command.quickProduct === true ? QuickProductFlag.YES : QuickProductFlag.NO;
     storeProduct.status = command.status;
     const savedProduct = await this.storeProductRepository.save(storeProduct);
     return this.toProductView(savedProduct, [], categoryRow.categoryName);
@@ -550,6 +566,7 @@ export class StoreService {
     storeProduct.barcode = barcode;
     storeProduct.salePrice = toMoneyString(command.salePrice);
     storeProduct.costPrice = costPriceText;
+    storeProduct.quickProduct = command.quickProduct === true ? QuickProductFlag.YES : QuickProductFlag.NO;
     storeProduct.status = command.status;
     const savedProduct = await this.storeProductRepository.save(storeProduct);
     const productViewList = await this.toProductViewList([savedProduct]);
@@ -685,13 +702,42 @@ export class StoreService {
   }
 
   /**
+   * 把开始、结束日期收成当天的起止时间。都不传则不限时间。
+   */
+  private resolveOrderTimeRange(startDate: string, endDate: string): { startAt: string; endAt: string } | null {
+    const cleanedStartDate = isEmpty(startDate) ? '' : startDate.trim();
+    const cleanedEndDate = isEmpty(endDate) ? '' : endDate.trim();
+    if (isEmpty(cleanedStartDate) && isEmpty(cleanedEndDate)) {
+      return null;
+    }
+    if (isEmpty(cleanedStartDate) || isEmpty(cleanedEndDate)) {
+      throw new BusinessException('请选择完整的时间范围');
+    }
+    if (OrderDateTextPattern.test(cleanedStartDate) !== true || OrderDateTextPattern.test(cleanedEndDate) !== true) {
+      throw new BusinessException('时间范围不正确');
+    }
+    if (cleanedEndDate < cleanedStartDate) {
+      throw new BusinessException('结束日期不能早于开始日期');
+    }
+    return {
+      startAt: `${cleanedStartDate} 00:00:00`,
+      endAt: `${cleanedEndDate} 23:59:59`,
+    };
+  }
+
+  /**
    * 分页查询销售单。
    */
-  async pageSales(page: number, pageSize: number): Promise<PageResult<StoreSaleView>> {
+  async pageSales(page: number, pageSize: number, startDate: string, endDate: string): Promise<PageResult<StoreSaleView>> {
     const shopId = await this.requireEnabledStoreShop();
     const pageSetting = resolvePage(page, pageSize);
+    const whereCondition: FindOptionsWhere<StoreSale> = { shopId };
+    const orderTimeRange = this.resolveOrderTimeRange(startDate, endDate);
+    if (orderTimeRange !== null) {
+      whereCondition.createdAt = Between(orderTimeRange.startAt, orderTimeRange.endAt);
+    }
     const [saleList, total] = await this.storeSaleRepository.findAndCount({
-      where: { shopId },
+      where: whereCondition,
       order: { id: 'DESC' },
       skip: pageSetting.skip,
       take: pageSetting.pageSize,
@@ -1313,6 +1359,13 @@ export class StoreService {
   }
 
   /**
+   * 快捷商品在库里是 0/1，有的驱动会读成布尔值。
+   */
+  private readQuickProduct(quickProduct: number | boolean): boolean {
+    return quickProduct === true || quickProduct === QuickProductFlag.YES;
+  }
+
+  /**
    * 把商品实体转成前端字段。
    */
   private toProductView(storeProduct: StoreProduct, imageList: StoreProductImageView[], categoryName: string): StoreProductView {
@@ -1327,6 +1380,7 @@ export class StoreService {
       salePrice: storeProduct.salePrice,
       costPrice: storeProduct.costPrice,
       stockQuantity: storeProduct.stockQuantity,
+      quickProduct: this.readQuickProduct(storeProduct.quickProduct),
       status: storeProduct.status,
       imageList,
     };
