@@ -18,12 +18,14 @@ import {
   KtvRoomStatus,
   KtvOrderStatus,
   KtvPendingVerifyWindow,
+  MemberBookingCancelLead,
   PageSetting,
   ShopPayQr,
   RecordStatus,
   ShopImageLimit,
   ShopImageMime,
   ShopType,
+  TimeSpan,
   UploadSetting,
   VerifyCodeRule,
   NumberBoundary,
@@ -130,6 +132,7 @@ export interface KtvBookingOrderView {
   amount: string;
   orderStatus: string;
   verifyCode: string;
+  canCancel: boolean;
   createdAt: string;
 }
 
@@ -921,41 +924,31 @@ export class KtvService {
   }
 
   /**
-   * 取消预订。待支付只关单；待核销关单并退回包厢费。
+   * 后台取消预订。待支付只关单；待核销关单并退回包厢费。不受会员半小时限制。
    */
   async cancelBooking(bookingOrderId: string, operatorId: string): Promise<void> {
     await SimOrm.transaction(this.dataSource, async (entityManager) => {
-      // 1. 锁定订单并确认还能取消
-      const bookingOrder = await entityManager
-        .getRepository(KtvBookingOrder)
-        .createQueryBuilder('bookingOrder')
-        .setLock('pessimistic_write')
-        .where('bookingOrder.id = :bookingOrderId', { bookingOrderId })
-        .getOne();
-      if (isEmpty(bookingOrder)) {
+      const bookingOrder = await this.lockBookingOrderForCancel(entityManager, bookingOrderId);
+      await this.applyKtvBookingCancel(entityManager, bookingOrder, operatorId);
+    });
+  }
+
+  /**
+   * 会员自助取消。须本人订单，且开唱前至少半小时。
+   */
+  async cancelMemberBooking(memberId: string, bookingOrderId: string): Promise<void> {
+    await SimOrm.transaction(this.dataSource, async (entityManager) => {
+      // 1. 锁定订单，确认归属与状态
+      const bookingOrder = await this.lockBookingOrderForCancel(entityManager, bookingOrderId);
+      if (toIdentifier(bookingOrder.memberId) !== toIdentifier(memberId)) {
         throw new BusinessException('订单不存在');
       }
-      const cancelable = KtvBookingCancelableStatusList.some((orderStatus) => orderStatus === bookingOrder.orderStatus);
-      if (cancelable !== true) {
-        throw new BusinessException('当前状态不能取消');
+      // 2. 开唱前不足半小时不可取消
+      const shop = await this.shopService.findById(toIdentifier(bookingOrder.shopId));
+      if (this.isKtvMemberCancelLeadMet(bookingOrder, shop, new Date()) !== true) {
+        throw new BusinessException('开唱前半小时内不可取消');
       }
-      // 2. 待支付尚未扣款，直接取消；待核销已支付，改成已退款并退余额
-      if (bookingOrder.orderStatus === KtvOrderStatus.PENDING_PAY) {
-        bookingOrder.orderStatus = KtvOrderStatus.CANCELLED;
-        await entityManager.getRepository(KtvBookingOrder).save(bookingOrder);
-        return;
-      }
-      bookingOrder.orderStatus = KtvOrderStatus.REFUNDED;
-      await entityManager.getRepository(KtvBookingOrder).save(bookingOrder);
-      await this.memberBalanceService.refundBalance({
-        entityManager,
-        memberId: toIdentifier(bookingOrder.memberId),
-        shopId: toIdentifier(bookingOrder.shopId),
-        amount: bookingOrder.amount,
-        bizOrderNo: bookingOrder.orderNo,
-        operatorId,
-        remark: 'KTV预订取消退款',
-      });
+      await this.applyKtvBookingCancel(entityManager, bookingOrder, null);
     });
   }
 
@@ -1359,6 +1352,77 @@ export class KtvService {
   }
 
   /**
+   * 锁定待取消的预订订单，并确认状态允许取消。
+   */
+  private async lockBookingOrderForCancel(entityManager: EntityManager, bookingOrderId: string): Promise<KtvBookingOrder> {
+    const bookingOrder = await entityManager
+      .getRepository(KtvBookingOrder)
+      .createQueryBuilder('bookingOrder')
+      .setLock('pessimistic_write')
+      .where('bookingOrder.id = :bookingOrderId', { bookingOrderId })
+      .getOne();
+    if (isEmpty(bookingOrder)) {
+      throw new BusinessException('订单不存在');
+    }
+    const cancelable = KtvBookingCancelableStatusList.some((orderStatus) => orderStatus === bookingOrder.orderStatus);
+    if (cancelable !== true) {
+      throw new BusinessException('当前状态不能取消');
+    }
+    return bookingOrder;
+  }
+
+  /**
+   * 待支付只关单；待核销关单并退回包厢费。
+   */
+  private async applyKtvBookingCancel(
+    entityManager: EntityManager,
+    bookingOrder: KtvBookingOrder,
+    operatorId: string | null,
+  ): Promise<void> {
+    if (bookingOrder.orderStatus === KtvOrderStatus.PENDING_PAY) {
+      bookingOrder.orderStatus = KtvOrderStatus.CANCELLED;
+      await entityManager.getRepository(KtvBookingOrder).save(bookingOrder);
+      return;
+    }
+    bookingOrder.orderStatus = KtvOrderStatus.REFUNDED;
+    await entityManager.getRepository(KtvBookingOrder).save(bookingOrder);
+    await this.memberBalanceService.refundBalance({
+      entityManager,
+      memberId: toIdentifier(bookingOrder.memberId),
+      shopId: toIdentifier(bookingOrder.shopId),
+      amount: bookingOrder.amount,
+      bizOrderNo: bookingOrder.orderNo,
+      operatorId,
+      remark: 'KTV预订取消退款',
+    });
+  }
+
+  /**
+   * 开唱日期时间按门店钟面解析成可比时刻（UTC 字段存钟面）。
+   */
+  private ktvBookingStartWallClock(bookingOrder: KtvBookingOrder): Date {
+    const bookingDateText = String(bookingOrder.bookingDate).slice(0, 10);
+    const startTimeText = String(bookingOrder.startTime).slice(0, 8);
+    const datePartList = bookingDateText.split('-').map((datePart) => Number(datePart));
+    const timePartList = startTimeText.split(':').map((timePart) => Number(timePart));
+    return new Date(Date.UTC(datePartList[0], datePartList[1] - 1, datePartList[2], timePartList[0], timePartList[1], timePartList[2] || 0));
+  }
+
+  /**
+   * 会员自助取消是否满足开唱前半小时。状态不可取消时直接否。
+   */
+  private isKtvMemberCancelLeadMet(bookingOrder: KtvBookingOrder, shop: Shop, now: Date): boolean {
+    const cancelable = KtvBookingCancelableStatusList.some((orderStatus) => orderStatus === bookingOrder.orderStatus);
+    if (cancelable !== true) {
+      return false;
+    }
+    const shopNow = this.toShopWallClock(now, shop.timeZone);
+    const startWallClock = this.ktvBookingStartWallClock(bookingOrder);
+    const leadMilliseconds = MemberBookingCancelLead.MINUTES * 60 * TimeSpan.MILLISECONDS_PER_SECOND;
+    return shopNow.getTime() <= startWallClock.getTime() - leadMilliseconds;
+  }
+
+  /**
    * 给订单补上包厢和会员展示字段。
    */
   private async toBookingViewList(bookingOrderList: KtvBookingOrder[]): Promise<KtvBookingOrderView[]> {
@@ -1370,13 +1434,18 @@ export class KtvService {
       .filter((roomId) => isEmpty(roomId) !== true);
     const roomTypeIdList = bookingOrderList.map((bookingOrder) => toIdentifier(bookingOrder.roomTypeId));
     const memberIdList = bookingOrderList.map((bookingOrder) => toIdentifier(bookingOrder.memberId));
+    const shopIdList = bookingOrderList.map((bookingOrder) => toIdentifier(bookingOrder.shopId));
     const roomList = roomIdList.length === 0 ? [] : await this.ktvRoomRepository.find({ where: { id: In(roomIdList) } });
     const roomTypeList = await this.ktvRoomTypeRepository.find({ where: { id: In(roomTypeIdList) } });
     const memberAccountList = await this.memberQueryService.findByIdList(memberIdList);
+    const shopList = await this.shopService.findByIdList(shopIdList);
+    const now = new Date();
     return bookingOrderList.map((bookingOrder) => {
       const ktvRoom = roomList.find((room) => toIdentifier(room.id) === toIdentifier(bookingOrder.roomId));
       const ktvRoomType = roomTypeList.find((roomType) => toIdentifier(roomType.id) === toIdentifier(bookingOrder.roomTypeId));
       const memberAccount = memberAccountList.find((member) => toIdentifier(member.id) === toIdentifier(bookingOrder.memberId));
+      const shop = shopList.find((shopRow) => toIdentifier(shopRow.id) === toIdentifier(bookingOrder.shopId));
+      const canCancel = isEmpty(shop) ? false : this.isKtvMemberCancelLeadMet(bookingOrder, shop, now);
       return {
         bookingOrderId: toIdentifier(bookingOrder.id),
         shopId: toIdentifier(bookingOrder.shopId),
@@ -1397,6 +1466,7 @@ export class KtvService {
         amount: bookingOrder.amount,
         orderStatus: bookingOrder.orderStatus,
         verifyCode: bookingOrder.verifyCode,
+        canCancel,
         createdAt: bookingOrder.createdAt,
       };
     });

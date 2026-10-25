@@ -508,4 +508,12 @@ export class HotelAppController {
   pageBookingOrders(@Query() pageQueryDto: PageQueryDto, @CurrentAccount() loginAccountContext: LoginAccountContext) {
     return this.hotelService.pageMemberBookingOrders(loginAccountContext.accountId, pageQueryDto.page, pageQueryDto.pageSize);
   }
+
+  /**
+   * 会员取消自己的预订。入住前半小时内不可取消。
+   */
+  @Post('booking-orders/:bookingOrderId/cancel')
+  cancelBooking(@Param('bookingOrderId') bookingOrderId: string, @CurrentAccount() loginAccountContext: LoginAccountContext) {
+    return this.hotelService.cancelMemberBooking(loginAccountContext.accountId, bookingOrderId);
+  }
 }

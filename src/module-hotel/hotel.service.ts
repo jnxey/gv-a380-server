@@ -4,7 +4,7 @@ import { join } from 'path';
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import Decimal from 'decimal.js';
-import { DataSource, FindOptionsWhere, In, Repository } from 'typeorm';
+import { DataSource, EntityManager, FindOptionsWhere, In, Repository } from 'typeorm';
 import {
   BusinessNoPrefix,
   FinanceBizType,
@@ -15,6 +15,7 @@ import {
   HotelStayStatus,
   HotelWalkInContact,
   HotelWalkInNight,
+  MemberBookingCancelLead,
   PageSetting,
   RecordStatus,
   TimeSpan,
@@ -46,6 +47,7 @@ import { SimOrm } from '../common/tools/sim-orm';
 import { MemberBalanceService } from '../core/member/member-balance.service';
 import { MemberQueryService } from '../core/member/member-query.service';
 import { NotifyService } from '../core/notify/notify.service';
+import { Shop } from '../core/shop/shop.entity';
 import { ShopService } from '../core/shop/shop.service';
 import { HotelBookingOrder, HotelRoom, HotelRoomType, HotelRoomTypeImage, HotelStayRecord } from './hotel.entities';
 
@@ -132,6 +134,7 @@ export interface HotelBookingOrderView {
   amount: string;
   orderStatus: string;
   stayStatus: string;
+  canCancel: boolean;
   createdAt: string;
 }
 
@@ -799,41 +802,31 @@ export class HotelService {
   }
 
   /**
-   * 取消尚未入住的预订。待支付只关单；已预订关单并退回房费。
+   * 后台取消尚未入住的预订。待支付只关单；已预订关单并退回房费。不受会员半小时限制。
    */
   async cancelBooking(bookingOrderId: string, operatorId: string): Promise<void> {
     await SimOrm.transaction(this.dataSource, async (entityManager) => {
-      // 1. 锁定订单并确认还能取消
-      const bookingOrder = await entityManager
-        .getRepository(HotelBookingOrder)
-        .createQueryBuilder('bookingOrder')
-        .setLock('pessimistic_write')
-        .where('bookingOrder.id = :bookingOrderId', { bookingOrderId })
-        .getOne();
-      if (isEmpty(bookingOrder)) {
+      const bookingOrder = await this.lockBookingOrderForCancel(entityManager, bookingOrderId);
+      await this.applyHotelBookingCancel(entityManager, bookingOrder, operatorId);
+    });
+  }
+
+  /**
+   * 会员自助取消。须本人订单，且入住日门店切点前至少半小时。
+   */
+  async cancelMemberBooking(memberId: string, bookingOrderId: string): Promise<void> {
+    await SimOrm.transaction(this.dataSource, async (entityManager) => {
+      // 1. 锁定订单，确认归属与状态
+      const bookingOrder = await this.lockBookingOrderForCancel(entityManager, bookingOrderId);
+      if (toIdentifier(bookingOrder.memberId) !== toIdentifier(memberId)) {
         throw new BusinessException('订单不存在');
       }
-      const cancelable = HotelBookingCancelableStatusList.some((orderStatus) => orderStatus === bookingOrder.orderStatus);
-      if (cancelable !== true) {
-        throw new BusinessException('只有未入住的订单可以取消');
+      // 2. 入住开始前不足半小时不可取消
+      const shop = await this.shopService.findById(toIdentifier(bookingOrder.shopId));
+      if (this.isHotelMemberCancelLeadMet(bookingOrder, shop, new Date()) !== true) {
+        throw new BusinessException('入住前半小时内不可取消');
       }
-      // 2. 待支付尚未扣款，直接取消；已预订已支付，改成已退款并退余额
-      if (bookingOrder.orderStatus === HotelOrderStatus.PENDING_PAY) {
-        bookingOrder.orderStatus = HotelOrderStatus.CANCELLED;
-        await entityManager.getRepository(HotelBookingOrder).save(bookingOrder);
-        return;
-      }
-      bookingOrder.orderStatus = HotelOrderStatus.REFUNDED;
-      await entityManager.getRepository(HotelBookingOrder).save(bookingOrder);
-      await this.memberBalanceService.refundBalance({
-        entityManager,
-        memberId: toIdentifier(bookingOrder.memberId),
-        shopId: toIdentifier(bookingOrder.shopId),
-        amount: bookingOrder.amount,
-        bizOrderNo: bookingOrder.orderNo,
-        operatorId,
-        remark: '酒店预订取消退款',
-      });
+      await this.applyHotelBookingCancel(entityManager, bookingOrder, null);
     });
   }
 
@@ -1109,6 +1102,75 @@ export class HotelService {
   }
 
   /**
+   * 锁定待取消的预订订单，并确认状态允许取消。
+   */
+  private async lockBookingOrderForCancel(entityManager: EntityManager, bookingOrderId: string): Promise<HotelBookingOrder> {
+    const bookingOrder = await entityManager
+      .getRepository(HotelBookingOrder)
+      .createQueryBuilder('bookingOrder')
+      .setLock('pessimistic_write')
+      .where('bookingOrder.id = :bookingOrderId', { bookingOrderId })
+      .getOne();
+    if (isEmpty(bookingOrder)) {
+      throw new BusinessException('订单不存在');
+    }
+    const cancelable = HotelBookingCancelableStatusList.some((orderStatus) => orderStatus === bookingOrder.orderStatus);
+    if (cancelable !== true) {
+      throw new BusinessException('只有未入住的订单可以取消');
+    }
+    return bookingOrder;
+  }
+
+  /**
+   * 待支付只关单；已预订关单并退回房费。
+   */
+  private async applyHotelBookingCancel(
+    entityManager: EntityManager,
+    bookingOrder: HotelBookingOrder,
+    operatorId: string | null,
+  ): Promise<void> {
+    if (bookingOrder.orderStatus === HotelOrderStatus.PENDING_PAY) {
+      bookingOrder.orderStatus = HotelOrderStatus.CANCELLED;
+      await entityManager.getRepository(HotelBookingOrder).save(bookingOrder);
+      return;
+    }
+    bookingOrder.orderStatus = HotelOrderStatus.REFUNDED;
+    await entityManager.getRepository(HotelBookingOrder).save(bookingOrder);
+    await this.memberBalanceService.refundBalance({
+      entityManager,
+      memberId: toIdentifier(bookingOrder.memberId),
+      shopId: toIdentifier(bookingOrder.shopId),
+      amount: bookingOrder.amount,
+      bizOrderNo: bookingOrder.orderNo,
+      operatorId,
+      remark: '酒店预订取消退款',
+    });
+  }
+
+  /**
+   * 入住日门店切点按门店钟面解析成可比时刻（UTC 字段存钟面）。
+   */
+  private hotelCheckInStartWallClock(bookingOrder: HotelBookingOrder): Date {
+    const checkInDateText = String(bookingOrder.checkInDate).slice(0, 10);
+    const datePartList = checkInDateText.split('-').map((datePart) => Number(datePart));
+    return new Date(Date.UTC(datePartList[0], datePartList[1] - 1, datePartList[2], HotelBusinessDay.START_HOUR, 0, 0));
+  }
+
+  /**
+   * 会员自助取消是否满足入住前半小时。状态不可取消时直接否。
+   */
+  private isHotelMemberCancelLeadMet(bookingOrder: HotelBookingOrder, shop: Shop, now: Date): boolean {
+    const cancelable = HotelBookingCancelableStatusList.some((orderStatus) => orderStatus === bookingOrder.orderStatus);
+    if (cancelable !== true) {
+      return false;
+    }
+    const shopNow = this.toShopWallClock(now, shop.timeZone);
+    const startWallClock = this.hotelCheckInStartWallClock(bookingOrder);
+    const leadMilliseconds = MemberBookingCancelLead.MINUTES * 60 * TimeSpan.MILLISECONDS_PER_SECOND;
+    return shopNow.getTime() <= startWallClock.getTime() - leadMilliseconds;
+  }
+
+  /**
    * 组装订单展示数据。
    */
   private async toBookingViewList(bookingOrderList: HotelBookingOrder[]): Promise<HotelBookingOrderView[]> {
@@ -1123,15 +1185,20 @@ export class HotelService {
       .map((bookingOrder) => toIdentifier(bookingOrder.memberId))
       .filter((memberId) => isEmpty(memberId) !== true);
     const bookingOrderIdList = bookingOrderList.map((bookingOrder) => toIdentifier(bookingOrder.id));
+    const shopIdList = bookingOrderList.map((bookingOrder) => toIdentifier(bookingOrder.shopId));
     const roomTypeList = await this.hotelRoomTypeRepository.find({ where: { id: In(roomTypeIdList) } });
     const roomList = roomIdList.length === 0 ? [] : await this.hotelRoomRepository.find({ where: { id: In(roomIdList) } });
     const memberAccountList = await this.memberQueryService.findByIdList(memberIdList);
     const stayRecordList = await this.hotelStayRecordRepository.find({ where: { bookingOrderId: In(bookingOrderIdList) } });
+    const shopList = await this.shopService.findByIdList(shopIdList);
+    const now = new Date();
     return bookingOrderList.map((bookingOrder) => {
       const hotelRoomType = roomTypeList.find((roomType) => toIdentifier(roomType.id) === toIdentifier(bookingOrder.roomTypeId));
       const hotelRoom = roomList.find((room) => toIdentifier(room.id) === toIdentifier(bookingOrder.roomId));
       const memberAccount = memberAccountList.find((member) => toIdentifier(member.id) === toIdentifier(bookingOrder.memberId));
       const stayRecord = stayRecordList.find((record) => toIdentifier(record.bookingOrderId) === toIdentifier(bookingOrder.id));
+      const shop = shopList.find((shopRow) => toIdentifier(shopRow.id) === toIdentifier(bookingOrder.shopId));
+      const canCancel = isEmpty(shop) ? false : this.isHotelMemberCancelLeadMet(bookingOrder, shop, now);
       return {
         bookingOrderId: toIdentifier(bookingOrder.id),
         shopId: toIdentifier(bookingOrder.shopId),
@@ -1149,6 +1216,7 @@ export class HotelService {
         amount: bookingOrder.amount,
         orderStatus: bookingOrder.orderStatus,
         stayStatus: isEmpty(stayRecord) ? '' : stayRecord.stayStatus,
+        canCancel,
         createdAt: bookingOrder.createdAt,
       };
     });

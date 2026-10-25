@@ -251,6 +251,13 @@ export const HotelBookingCancelableStatusList = [
 ];
 
 /**
+ * 会员自助取消须在业务开始前至少这么多分钟。后台取消不受此限制。
+ */
+export const MemberBookingCancelLead = {
+  MINUTES: 30,
+} as const;
+
+/**
  * 酒店入住记录状态。
  */
 export const HotelStayStatus = {

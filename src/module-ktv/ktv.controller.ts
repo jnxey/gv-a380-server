@@ -549,4 +549,12 @@ export class KtvAppController {
   pageBookingOrders(@Query() pageQueryDto: PageQueryDto, @CurrentAccount() loginAccountContext: LoginAccountContext) {
     return this.ktvService.pageMemberBookingOrders(loginAccountContext.accountId, pageQueryDto.page, pageQueryDto.pageSize);
   }
+
+  /**
+   * 会员取消自己的预订。开唱前半小时内不可取消。
+   */
+  @Post('booking-orders/:bookingOrderId/cancel')
+  cancelBooking(@Param('bookingOrderId') bookingOrderId: string, @CurrentAccount() loginAccountContext: LoginAccountContext) {
+    return this.ktvService.cancelMemberBooking(loginAccountContext.accountId, bookingOrderId);
+  }
 }
