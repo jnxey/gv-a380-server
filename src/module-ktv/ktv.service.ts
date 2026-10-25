@@ -4,7 +4,7 @@ import { join } from 'path';
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import Decimal from 'decimal.js';
-import { DataSource, EntityManager, FindOptionsWhere, In, Repository, SelectQueryBuilder, Between } from 'typeorm';
+import { DataSource, EntityManager, FindOptionsWhere, In, Repository, SelectQueryBuilder, Between, Like } from 'typeorm';
 import {
   BusinessNoPrefix,
   DetailDescriptionLimit,
@@ -767,7 +767,17 @@ export class KtvService {
   }
 
   /**
-   * 后台分页查询当前门店预订订单。传入订单状态时只查该状态。传入近期小时数时，只留开唱时间落在现在前后这个小时数内的订单。
+   * 联系方式去空白并去掉百分号。空则不按联系方式筛选。
+   */
+  private readContactKeyword(contact: string): string {
+    if (isEmpty(contact)) {
+      return '';
+    }
+    return contact.replace(/%/g, '').trim();
+  }
+
+  /**
+   * 后台分页查询当前门店预订订单。传入订单状态时只查该状态。传入近期小时数时，只留开唱时间落在现在前后这个小时数内的订单。联系方式按包含匹配。
    */
   async pageBookingOrders(
     verifyCode: string,
@@ -777,8 +787,10 @@ export class KtvService {
     pageSizeValue: unknown,
     startDate: string,
     endDate: string,
+    contact: string,
   ): Promise<PageResult<KtvBookingOrderView>> {
     const pageResult = resolvePage(pageValue, pageSizeValue);
+    const contactKeyword = this.readContactKeyword(contact);
     if (isEmpty(recentHours)) {
       const whereCondition: FindOptionsWhere<KtvBookingOrder> = {};
       if (!isEmpty(verifyCode)) {
@@ -790,6 +802,9 @@ export class KtvService {
       const orderTimeRange = this.resolveOrderTimeRange(startDate, endDate);
       if (orderTimeRange !== null) {
         whereCondition.createdAt = Between(orderTimeRange.startAt, orderTimeRange.endAt);
+      }
+      if (isEmpty(contactKeyword) !== true) {
+        whereCondition.contact = Like(`%${contactKeyword}%`);
       }
       const [bookingOrderList, total] = await this.ktvBookingOrderRepository.findAndCount({
         where: whereCondition,
@@ -815,6 +830,9 @@ export class KtvService {
     }
     if (!isEmpty(orderStatus)) {
       bookingOrderQuery.andWhere('bookingOrder.orderStatus = :orderStatus', { orderStatus });
+    }
+    if (isEmpty(contactKeyword) !== true) {
+      bookingOrderQuery.andWhere('bookingOrder.contact LIKE :contactKeyword', { contactKeyword: `%${contactKeyword}%` });
     }
     bookingOrderQuery.andWhere('TIMESTAMP(bookingOrder.bookingDate, bookingOrder.startTime) >= :rangeStart', {
       rangeStart: this.formatDateTime(rangeStartAt),

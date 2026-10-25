@@ -208,6 +208,11 @@ export class StoreSaleQueryDto extends PageQueryDto {
   @IsOptional()
   @IsString()
   endDate?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(HotelWalkInContact.MAX_LENGTH, { message: '联系方式过长' })
+  contact?: string;
 }
 
 /**
@@ -528,6 +533,7 @@ export class StoreAdminController {
       Number(storeSaleQueryDto.pageSize),
       storeSaleQueryDto.startDate || '',
       storeSaleQueryDto.endDate || '',
+      storeSaleQueryDto.contact || '',
     );
   }
 

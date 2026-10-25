@@ -136,6 +136,11 @@ export class KtvBookingQueryDto extends PageQueryDto {
   @IsOptional()
   @IsString()
   endDate?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(HotelWalkInContact.MAX_LENGTH, { message: '联系方式过长' })
+  contact?: string;
 }
 
 /**
@@ -475,6 +480,7 @@ export class KtvAdminController {
       ktvBookingQueryDto.pageSize,
       ktvBookingQueryDto.startDate || '',
       ktvBookingQueryDto.endDate || '',
+      ktvBookingQueryDto.contact || '',
     );
   }
 

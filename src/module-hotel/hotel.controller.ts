@@ -212,6 +212,11 @@ export class HotelBookingQueryDto extends PageQueryDto {
   @IsOptional()
   @IsString()
   endDate?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(HotelWalkInContact.MAX_LENGTH, { message: '联系方式过长' })
+  contact?: string;
 }
 
 /**
@@ -502,6 +507,7 @@ export class HotelAdminController {
       hotelBookingQueryDto.pageSize,
       hotelBookingQueryDto.startDate || '',
       hotelBookingQueryDto.endDate || '',
+      hotelBookingQueryDto.contact || '',
     );
   }
 

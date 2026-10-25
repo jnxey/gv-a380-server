@@ -4,7 +4,7 @@ import { join } from 'path';
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import Decimal from 'decimal.js';
-import { DataSource, EntityManager, FindOptionsWhere, In, Repository, Between } from 'typeorm';
+import { DataSource, EntityManager, FindOptionsWhere, In, Repository, Between, Like } from 'typeorm';
 import {
   BusinessNoPrefix,
   DetailDescriptionLimit,
@@ -568,14 +568,34 @@ export class HotelService {
   }
 
   /**
-   * 后台分页查询当前门店酒店订单。
+   * 联系方式去空白并去掉百分号。空则不按联系方式筛选。
    */
-  async pageBookingOrders(pageValue: unknown, pageSizeValue: unknown, startDate: string, endDate: string): Promise<PageResult<HotelBookingOrderView>> {
+  private readContactKeyword(contact: string): string {
+    if (isEmpty(contact)) {
+      return '';
+    }
+    return contact.replace(/%/g, '').trim();
+  }
+
+  /**
+   * 后台分页查询当前门店酒店订单。联系方式按包含匹配。
+   */
+  async pageBookingOrders(
+    pageValue: unknown,
+    pageSizeValue: unknown,
+    startDate: string,
+    endDate: string,
+    contact: string,
+  ): Promise<PageResult<HotelBookingOrderView>> {
     const pageResult = resolvePage(pageValue, pageSizeValue);
     const whereCondition: FindOptionsWhere<HotelBookingOrder> = {};
     const orderTimeRange = this.resolveOrderTimeRange(startDate, endDate);
     if (orderTimeRange !== null) {
       whereCondition.createdAt = Between(orderTimeRange.startAt, orderTimeRange.endAt);
+    }
+    const contactKeyword = this.readContactKeyword(contact);
+    if (isEmpty(contactKeyword) !== true) {
+      whereCondition.contact = Like(`%${contactKeyword}%`);
     }
     const [bookingOrderList, total] = await this.hotelBookingOrderRepository.findAndCount({
       where: whereCondition,

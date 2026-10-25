@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto';
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import Decimal from 'decimal.js';
-import { DataSource, EntityManager, FindOptionsWhere, In, Repository, Between } from 'typeorm';
+import { DataSource, EntityManager, FindOptionsWhere, In, Repository, Between, Like } from 'typeorm';
 import {
   BusinessNoPrefix,
   DetailDescriptionLimit,
@@ -726,15 +726,29 @@ export class StoreService {
   }
 
   /**
-   * 分页查询销售单。
+   * 联系方式去空白并去掉百分号。空则不按联系方式筛选。
    */
-  async pageSales(page: number, pageSize: number, startDate: string, endDate: string): Promise<PageResult<StoreSaleView>> {
+  private readContactKeyword(contact: string): string {
+    if (isEmpty(contact)) {
+      return '';
+    }
+    return contact.replace(/%/g, '').trim();
+  }
+
+  /**
+   * 分页查询销售单。联系方式按包含匹配。
+   */
+  async pageSales(page: number, pageSize: number, startDate: string, endDate: string, contact: string): Promise<PageResult<StoreSaleView>> {
     const shopId = await this.requireEnabledStoreShop();
     const pageSetting = resolvePage(page, pageSize);
     const whereCondition: FindOptionsWhere<StoreSale> = { shopId };
     const orderTimeRange = this.resolveOrderTimeRange(startDate, endDate);
     if (orderTimeRange !== null) {
       whereCondition.createdAt = Between(orderTimeRange.startAt, orderTimeRange.endAt);
+    }
+    const contactKeyword = this.readContactKeyword(contact);
+    if (isEmpty(contactKeyword) !== true) {
+      whereCondition.contact = Like(`%${contactKeyword}%`);
     }
     const [saleList, total] = await this.storeSaleRepository.findAndCount({
       where: whereCondition,
