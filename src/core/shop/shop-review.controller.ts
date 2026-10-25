@@ -41,6 +41,19 @@ export class ShopReviewQueryDto extends PageQueryDto {
 }
 
 /**
+ * 后台评价列表查询。可按创建日期筛选。
+ */
+export class AdminShopReviewQueryDto extends PageQueryDto {
+  @IsOptional()
+  @IsString()
+  startDate?: string;
+
+  @IsOptional()
+  @IsString()
+  endDate?: string;
+}
+
+/**
  * 小程序门店评价。
  */
 @Controller('app/shop-reviews')
@@ -83,8 +96,13 @@ export class KtvReviewAdminController {
    */
   @Get()
   @RequirePermission(PermissionCode.KTV_REVIEW_QUERY)
-  pageReviews(@Query() pageQueryDto: PageQueryDto) {
-    return this.shopReviewService.pageByCurrentShop(pageQueryDto.page, pageQueryDto.pageSize);
+  pageReviews(@Query() adminShopReviewQueryDto: AdminShopReviewQueryDto) {
+    return this.shopReviewService.pageByCurrentShop(
+      adminShopReviewQueryDto.page,
+      adminShopReviewQueryDto.pageSize,
+      adminShopReviewQueryDto.startDate || '',
+      adminShopReviewQueryDto.endDate || '',
+    );
   }
 }
 
@@ -102,8 +120,13 @@ export class HotelReviewAdminController {
    */
   @Get()
   @RequirePermission(PermissionCode.HOTEL_REVIEW_QUERY)
-  pageReviews(@Query() pageQueryDto: PageQueryDto) {
-    return this.shopReviewService.pageByCurrentShop(pageQueryDto.page, pageQueryDto.pageSize);
+  pageReviews(@Query() adminShopReviewQueryDto: AdminShopReviewQueryDto) {
+    return this.shopReviewService.pageByCurrentShop(
+      adminShopReviewQueryDto.page,
+      adminShopReviewQueryDto.pageSize,
+      adminShopReviewQueryDto.startDate || '',
+      adminShopReviewQueryDto.endDate || '',
+    );
   }
 }
 
@@ -121,7 +144,12 @@ export class StoreReviewAdminController {
    */
   @Get()
   @RequirePermission(PermissionCode.STORE_REVIEW_QUERY)
-  pageReviews(@Query() pageQueryDto: PageQueryDto) {
-    return this.shopReviewService.pageByCurrentShop(pageQueryDto.page, pageQueryDto.pageSize);
+  pageReviews(@Query() adminShopReviewQueryDto: AdminShopReviewQueryDto) {
+    return this.shopReviewService.pageByCurrentShop(
+      adminShopReviewQueryDto.page,
+      adminShopReviewQueryDto.pageSize,
+      adminShopReviewQueryDto.startDate || '',
+      adminShopReviewQueryDto.endDate || '',
+    );
   }
 }

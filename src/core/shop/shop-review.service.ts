@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, Repository } from 'typeorm';
+import { Between, DataSource, EntityManager, FindOptionsWhere, Repository } from 'typeorm';
 import {
   HotelOrderStatus,
   KtvOrderStatus,
@@ -21,6 +21,8 @@ import { StoreSale } from '../../module-store/store.entities';
 import { MemberQueryService } from '../member/member-query.service';
 import { ShopReview } from './shop-review.entity';
 import { ShopService } from './shop.service';
+
+const ReviewDateTextPattern = /^\d{4}-\d{2}-\d{2}$/;
 
 export interface CreateShopReviewCommand {
   bizType: string;
@@ -63,18 +65,23 @@ export class ShopReviewService {
       throw new BusinessException('门店不存在');
     }
     await this.shopService.findById(shopId);
-    return this.pageReviews({ shopId }, pageValue, pageSizeValue);
+    return this.pageReviews({ shopId }, pageValue, pageSizeValue, '', '');
   }
 
   /**
-   * 后台按当前门店分页查评价。
+   * 后台按当前门店分页查评价，可按创建日期筛选。
    */
-  async pageByCurrentShop(pageValue: unknown, pageSizeValue: unknown): Promise<PageResult<ShopReviewView>> {
+  async pageByCurrentShop(
+    pageValue: unknown,
+    pageSizeValue: unknown,
+    startDate = '',
+    endDate = '',
+  ): Promise<PageResult<ShopReviewView>> {
     const shopId = ShopContext.getCurrentShopId();
     if (isEmpty(shopId)) {
       throw new BusinessException('请选择门店');
     }
-    return this.pageReviews({ shopId }, pageValue, pageSizeValue);
+    return this.pageReviews({ shopId }, pageValue, pageSizeValue, startDate, endDate);
   }
 
   /**
@@ -135,10 +142,17 @@ export class ShopReviewService {
     whereCondition: { shopId: string },
     pageValue: unknown,
     pageSizeValue: unknown,
+    startDate: string,
+    endDate: string,
   ): Promise<PageResult<ShopReviewView>> {
     const pageResult = resolvePage(pageValue, pageSizeValue);
+    const reviewWhere: FindOptionsWhere<ShopReview> = { shopId: whereCondition.shopId };
+    const reviewTimeRange = this.resolveReviewTimeRange(startDate, endDate);
+    if (isEmpty(reviewTimeRange) !== true) {
+      reviewWhere.createdAt = Between(reviewTimeRange.startAt, reviewTimeRange.endAt);
+    }
     const [reviewList, total] = await this.shopReviewRepository.findAndCount({
-      where: whereCondition,
+      where: reviewWhere,
       order: { id: 'DESC' },
       skip: pageResult.skip,
       take: pageResult.pageSize,
@@ -148,6 +162,30 @@ export class ShopReviewService {
       total,
       page: pageResult.page,
       pageSize: pageResult.pageSize,
+    };
+  }
+
+  /**
+   * 把开始、结束日期收成当天的起止时间。都不传则不限时间。
+   */
+  private resolveReviewTimeRange(startDate: string, endDate: string): { startAt: string; endAt: string } | null {
+    const cleanedStartDate = isEmpty(startDate) ? '' : startDate.trim();
+    const cleanedEndDate = isEmpty(endDate) ? '' : endDate.trim();
+    if (isEmpty(cleanedStartDate) && isEmpty(cleanedEndDate)) {
+      return null;
+    }
+    if (isEmpty(cleanedStartDate) || isEmpty(cleanedEndDate)) {
+      throw new BusinessException('请选择完整的时间范围');
+    }
+    if (ReviewDateTextPattern.test(cleanedStartDate) !== true || ReviewDateTextPattern.test(cleanedEndDate) !== true) {
+      throw new BusinessException('时间范围不正确');
+    }
+    if (cleanedEndDate < cleanedStartDate) {
+      throw new BusinessException('结束日期不能早于开始日期');
+    }
+    return {
+      startAt: `${cleanedStartDate} 00:00:00`,
+      endAt: `${cleanedEndDate} 23:59:59`,
     };
   }
 
