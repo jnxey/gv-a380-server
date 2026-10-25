@@ -190,18 +190,18 @@ INSERT INTO sys_user_shop (id, user_id, shop_id) VALUES
 INSERT INTO member_account (id, username, balance, status) VALUES
 (1, 'M3800001', 1000.00, 'ENABLED');
 
-INSERT INTO ktv_room_type (id, shop_id, type_name, hourly_price, status, sort_order) VALUES
-(1, 2, '小包', 200.00, 'ENABLED', 2),
-(2, 2, '中包', 400.00, 'ENABLED', 1),
-(3, 2, '大包', 600.00, 'ENABLED', 0);
+INSERT INTO ktv_room_type (id, shop_id, type_name, description, hourly_price, status, sort_order) VALUES
+(1, 2, '小包', '{"bookingSummary":"","cancelRule":"","bookingNotice":""}', 200.00, 'ENABLED', 2),
+(2, 2, '中包', '{"bookingSummary":"","cancelRule":"","bookingNotice":""}', 400.00, 'ENABLED', 1),
+(3, 2, '大包', '{"bookingSummary":"","cancelRule":"","bookingNotice":""}', 600.00, 'ENABLED', 0);
 
 INSERT INTO ktv_room (id, shop_id, room_no, room_name, room_type_id, capacity, status, room_status, sort_order) VALUES
 (1, 2, 'A01', 'KTV01小包', 1, 4, 'ENABLED', 'IDLE', 1),
 (2, 2, 'A02', 'KTV01中包', 2, 8, 'ENABLED', 'IDLE', 0);
 
-INSERT INTO hotel_room_type (id, shop_id, type_name, price, status, sort_order) VALUES
-(1, 3, '大床房', 300.00, 'ENABLED', 1),
-(2, 3, '双床房', 320.00, 'ENABLED', 0);
+INSERT INTO hotel_room_type (id, shop_id, type_name, description, price, status, sort_order) VALUES
+(1, 3, '大床房', '{"bedType":"","roomSize":"","floorText":"","guestCount":"","breakfast":"","freeParking":"","bookingNotice":""}', 300.00, 'ENABLED', 1),
+(2, 3, '双床房', '{"bedType":"","roomSize":"","floorText":"","guestCount":"","breakfast":"","freeParking":"","bookingNotice":""}', 320.00, 'ENABLED', 0);
 
 INSERT INTO hotel_room (id, shop_id, room_type_id, room_no, floor_no, room_status, sort_order) VALUES
 (1, 3, 1, '801', '8', 'IDLE', 0),
@@ -211,6 +211,6 @@ INSERT INTO hotel_room (id, shop_id, room_type_id, room_no, floor_no, room_statu
 INSERT INTO store_product_category (id, shop_id, category_name, sort_order, status) VALUES
 (1, 4, '未分类', 0, 'ENABLED');
 
-INSERT INTO store_product (id, shop_id, category_id, product_name, barcode, sale_price, cost_price, stock_quantity, sort_order, status) VALUES
-(1, 4, 1, '矿泉水', '690000000001', 2.00, 1.00, 100, 0, 'ENABLED'),
-(2, 4, 1, '方便面', '690000000002', 5.00, 3.00, 50, 1, 'ENABLED');
+INSERT INTO store_product (id, shop_id, category_id, product_name, description, barcode, sale_price, cost_price, stock_quantity, sort_order, status) VALUES
+(1, 4, 1, '矿泉水', '{"content":""}', '690000000001', 2.00, 1.00, 100, 0, 'ENABLED'),
+(2, 4, 1, '方便面', '{"content":""}', '690000000002', 5.00, 3.00, 50, 1, 'ENABLED');
