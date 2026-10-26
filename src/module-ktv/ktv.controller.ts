@@ -573,11 +573,15 @@ export class KtvAppController {
   constructor(private readonly ktvService: KtvService) {}
 
   /**
-   * 查询指定 KTV 的可预订包厢类型。
+   * 查询指定 KTV 的包厢类型，并按预订日期和时长标出有没有空位。
    */
   @Get('room-types')
-  listRoomTypes(@Query('shopId') shopId: string) {
-    return this.ktvService.listEnabledRoomTypes(shopId);
+  listRoomTypes(
+    @Query('shopId') shopId: string,
+    @Query('bookingDate') bookingDate: string,
+    @Query('durationHours') durationHours: string,
+  ) {
+    return this.ktvService.listEnabledRoomTypes(shopId, bookingDate, Number(durationHours));
   }
 
   /**

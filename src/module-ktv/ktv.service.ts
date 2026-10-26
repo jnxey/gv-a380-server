@@ -4,7 +4,7 @@ import { join } from 'path';
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import Decimal from 'decimal.js';
-import { DataSource, EntityManager, FindOptionsWhere, In, Repository, SelectQueryBuilder, Between, Like } from 'typeorm';
+import { DataSource, EntityManager, FindOptionsWhere, In, Not, Repository, SelectQueryBuilder, Between, Like } from 'typeorm';
 import {
   BusinessNoPrefix,
   DetailDescriptionLimit,
@@ -105,6 +105,8 @@ export interface KtvRoomTypeView {
   /** 挂在该类型下的包厢数量。 */
   roomCount: number;
   imageList: KtvRoomTypeImageView[];
+  /** 所选日期和时长下是否还有可订时段。后台列表不带这个字段。 */
+  bookable?: boolean;
 }
 
 /**
@@ -327,9 +329,18 @@ export class KtvService {
   }
 
   /**
-   * 小程序按门店查询可预订的包厢类型。没有空闲包厢的类型不返回，结果带上类型图片。
+   * 小程序按门店查询启用中的包厢类型。类型都返回，并标出所选日期和时长下还有没有空位。
    */
-  async listEnabledRoomTypes(shopId: string): Promise<KtvRoomTypeView[]> {
+  async listEnabledRoomTypes(shopId: string, bookingDate: string, durationHours: number): Promise<KtvRoomTypeView[]> {
+    const durationHourCount = Number(durationHours);
+    if (Number.isInteger(durationHourCount) !== true || durationHourCount < KtvBookingHour.MIN || durationHourCount > KtvBookingHour.MAX) {
+      throw new BusinessException('演唱小时数必须在1到24之间');
+    }
+    const bookingDateText = isEmpty(bookingDate) ? '' : String(bookingDate).trim();
+    if (isEmpty(bookingDateText)) {
+      throw new BusinessException('请选择预订日期');
+    }
+    // 1. 启用中的类型全部返回，不再因为当前没有空闲包厢而藏起来
     const shop = await this.shopService.findEnabledShop(shopId, ShopType.KTV);
     const currentShopId = toIdentifier(shop.id);
     const roomTypeList = await this.ktvRoomTypeRepository.find({
@@ -339,17 +350,17 @@ export class KtvService {
     if (roomTypeList.length === 0) {
       return [];
     }
-    const enabledRoomList = await this.ktvRoomRepository.find({
-      where: {
-        shopId: currentShopId,
-        roomTypeId: In(roomTypeList.map((roomType) => toIdentifier(roomType.id))),
-        status: RecordStatus.ENABLED,
-        roomStatus: KtvRoomStatus.IDLE,
-      },
+    const roomTypeViewList = await this.toRoomTypeViewList(roomTypeList);
+    // 2. 可售间数去掉维修和关闭。使用中、打扫中仍算可售，之后的日期可以订
+    const sellableCountByTypeId = await this.countSellableRoomsByTypeId(currentShopId, roomTypeList.map((roomType) => toIdentifier(roomType.id)));
+    // 3. 这一天、这个时长下，至少有一个营业时段名额没用完，才算可订
+    const bookableRoomTypeIdSet = await this.findBookableRoomTypeIdSet(shop, currentShopId, bookingDateText, durationHourCount, sellableCountByTypeId);
+    return roomTypeViewList.map((roomTypeView) => {
+      return {
+        ...roomTypeView,
+        bookable: bookableRoomTypeIdSet.has(roomTypeView.id),
+      };
     });
-    const bookableRoomTypeIdSet = new Set(enabledRoomList.map((room) => toIdentifier(room.roomTypeId)));
-    const bookableRoomTypeList = roomTypeList.filter((roomType) => bookableRoomTypeIdSet.has(toIdentifier(roomType.id)));
-    return this.toRoomTypeViewList(bookableRoomTypeList);
   }
 
   /**
@@ -691,9 +702,14 @@ export class KtvService {
         throw new BusinessException('包厢类型不存在或已停用');
       }
       const roomTypeId = toIdentifier(ktvRoomType.id);
-      // 3. 可售数量只数该类型启用且空闲的包厢。一间都没有时，不是时段订满
+      // 3. 可售数量只数启用且不是维修、关闭的包厢。使用中仍占名额，一间都没有时不是时段订满
       const enabledRoomList = await entityManager.getRepository(KtvRoom).find({
-        where: { shopId, roomTypeId, status: RecordStatus.ENABLED, roomStatus: KtvRoomStatus.IDLE },
+        where: {
+          shopId,
+          roomTypeId,
+          status: RecordStatus.ENABLED,
+          roomStatus: Not(In([KtvRoomStatus.MAINTENANCE, KtvRoomStatus.CLOSED])),
+        },
       });
       if (enabledRoomList.length === 0) {
         throw new BusinessException('该包厢类型没有可售包厢');
@@ -1561,6 +1577,106 @@ export class KtvService {
       .andWhere(`${aliasName}.orderStatus IN (:...activeStatusList)`, { activeStatusList: KtvBookingActiveStatusList })
       .andWhere(`TIMESTAMP(${aliasName}.bookingDate, ${aliasName}.startTime) < :rangeEnd`, { rangeEnd })
       .andWhere(`DATE_ADD(TIMESTAMP(${aliasName}.bookingDate, ${aliasName}.startTime), INTERVAL ${aliasName}.durationHours HOUR) > :rangeStart`, { rangeStart });
+  }
+
+  /**
+   * 按类型统计可售包厢。启用，且不是维修或关闭。
+   */
+  private async countSellableRoomsByTypeId(shopId: string, roomTypeIdList: string[]): Promise<Map<string, number>> {
+    const sellableCountByTypeId = new Map<string, number>();
+    if (roomTypeIdList.length === 0) {
+      return sellableCountByTypeId;
+    }
+    const sellableRoomList = await this.ktvRoomRepository.find({
+      where: {
+        shopId,
+        roomTypeId: In(roomTypeIdList),
+        status: RecordStatus.ENABLED,
+        roomStatus: Not(In([KtvRoomStatus.MAINTENANCE, KtvRoomStatus.CLOSED])),
+      },
+    });
+    for (let roomIndex = 0; roomIndex < sellableRoomList.length; roomIndex += 1) {
+      const roomTypeId = toIdentifier(sellableRoomList[roomIndex].roomTypeId);
+      const currentCount = sellableCountByTypeId.get(roomTypeId);
+      sellableCountByTypeId.set(roomTypeId, isEmpty(currentCount) ? 1 : currentCount + 1);
+    }
+    return sellableCountByTypeId;
+  }
+
+  /**
+   * 找出所选日期和时长下还有空位的包厢类型。一个营业时段名额没用完即可。
+   */
+  private async findBookableRoomTypeIdSet(
+    shop: Shop,
+    shopId: string,
+    bookingDate: string,
+    durationHours: number,
+    sellableCountByTypeId: Map<string, number>,
+  ): Promise<Set<string>> {
+    const bookableRoomTypeIdSet = new Set<string>();
+    const daySlotList = this.listBookableSlots(new Date(), shop).filter((slot) => slot.bookingDate === bookingDate);
+    if (daySlotList.length === 0) {
+      return bookableRoomTypeIdSet;
+    }
+    // 1. 用当天最早开唱到最晚唱完的区间，一次取出可能相交的有效订单
+    let rangeStart = '';
+    let rangeEnd = '';
+    for (let slotIndex = 0; slotIndex < daySlotList.length; slotIndex += 1) {
+      const daySlot = daySlotList[slotIndex];
+      const bookingRange = this.resolveBookingRange(daySlot.bookingDate, daySlot.startTime, durationHours);
+      if (rangeStart === '' || bookingRange.rangeStart < rangeStart) {
+        rangeStart = bookingRange.rangeStart;
+      }
+      if (rangeEnd === '' || bookingRange.rangeEnd > rangeEnd) {
+        rangeEnd = bookingRange.rangeEnd;
+      }
+    }
+    const occupiedQuery = this.ktvBookingOrderRepository
+      .createQueryBuilder('bookingOrder')
+      .where('bookingOrder.shopId = :shopId', { shopId });
+    this.appendOccupiedRange(occupiedQuery, 'bookingOrder', rangeStart, rangeEnd);
+    const occupiedOrderList = await occupiedQuery.getMany();
+    // 2. 每个类型逐个时段数相交订单，有一个时段没订满就可以订
+    const roomTypeIdList = Array.from(sellableCountByTypeId.keys());
+    for (let roomTypeIndex = 0; roomTypeIndex < roomTypeIdList.length; roomTypeIndex += 1) {
+      const roomTypeId = roomTypeIdList[roomTypeIndex];
+      const sellableRoomCount = sellableCountByTypeId.get(roomTypeId);
+      if (isEmpty(sellableRoomCount) || sellableRoomCount <= 0) {
+        continue;
+      }
+      const typeOrderList = [];
+      for (let orderIndex = 0; orderIndex < occupiedOrderList.length; orderIndex += 1) {
+        const occupiedOrder = occupiedOrderList[orderIndex];
+        if (toIdentifier(occupiedOrder.roomTypeId) === roomTypeId) {
+          typeOrderList.push(occupiedOrder);
+        }
+      }
+      for (let slotIndex = 0; slotIndex < daySlotList.length; slotIndex += 1) {
+        const daySlot = daySlotList[slotIndex];
+        const bookingRange = this.resolveBookingRange(daySlot.bookingDate, daySlot.startTime, durationHours);
+        let occupiedCount = 0;
+        for (let orderIndex = 0; orderIndex < typeOrderList.length; orderIndex += 1) {
+          if (this.orderOverlapsRange(typeOrderList[orderIndex], bookingRange.rangeStart, bookingRange.rangeEnd)) {
+            occupiedCount += 1;
+          }
+        }
+        if (occupiedCount < sellableRoomCount) {
+          bookableRoomTypeIdSet.add(roomTypeId);
+          break;
+        }
+      }
+    }
+    return bookableRoomTypeIdSet;
+  }
+
+  /**
+   * 订单占用区间和目标区间是否相交。比较规则与时段占用查询相同。
+   */
+  private orderOverlapsRange(bookingOrder: KtvBookingOrder, rangeStart: string, rangeEnd: string): boolean {
+    const bookingDateText = String(bookingOrder.bookingDate).slice(0, 10);
+    const startTimeText = String(bookingOrder.startTime).slice(0, 8);
+    const bookingRange = this.resolveBookingRange(bookingDateText, startTimeText, Number(bookingOrder.durationHours));
+    return bookingRange.rangeStart < rangeEnd && bookingRange.rangeEnd > rangeStart;
   }
 
   /**
